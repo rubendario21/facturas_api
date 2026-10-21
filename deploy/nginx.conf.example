@@ -1,0 +1,28 @@
+# Ejemplo de sitio Nginx para la API (Ubuntu, PHP-FPM).
+# Copia a /etc/nginx/sites-available/facturas_api, crea el enlace en
+# sites-enabled y recarga: sudo nginx -t && sudo systemctl reload nginx
+server {
+    listen 80;
+    # Con dominio: server_name api.tudominio.com;  (y luego: sudo certbot --nginx)
+    server_name _;
+
+    root /var/www/facturas_api/public;
+    index index.php;
+
+    # Logo en base64 + lote de cambios.
+    client_max_body_size 10m;
+
+    location / {
+        try_files $uri /index.php$is_args$args;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        # Ajusta la versión de PHP instalada en el servidor.
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    }
+
+    # Nada fuera de public/ es accesible, pero por si acaso:
+    location ~ /\.(?!well-known) { deny all; }
+}

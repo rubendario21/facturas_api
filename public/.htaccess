@@ -1,0 +1,6 @@
+# Apache (WAMP): envía todas las rutas a index.php y conserva la cabecera Authorization.
+RewriteEngine On
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [QSA,L]

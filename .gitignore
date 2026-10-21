@@ -1,0 +1,5 @@
+# Contraseñas y clave de sesiones: cada servidor tiene la suya.
+config/config.php
+.idea/
+.vscode/
+*.log
