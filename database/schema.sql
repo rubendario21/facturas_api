@@ -12,23 +12,43 @@ CREATE TABLE IF NOT EXISTS businesses (
   -- Contador de cambios: cada modificación recibe el siguiente valor (rev),
   -- y los dispositivos piden "todo lo que cambió desde mi último rev".
   last_rev    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  -- Un negocio desactivado no puede usarse (nadie entra en él).
+  active      TINYINT(1) NOT NULL DEFAULT 1,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Cuentas de usuario (una por persona). A qué negocios pertenece y con qué
+-- rol está en memberships.
 CREATE TABLE IF NOT EXISTS users (
   id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  business_id    INT UNSIGNED NOT NULL,
   name           VARCHAR(120) NOT NULL,
   username       VARCHAR(60)  NOT NULL,
   password_hash  VARCHAR(255) NOT NULL,
-  role           ENUM('admin','member') NOT NULL DEFAULT 'member',
+  -- Dueño de la plataforma: crea negocios y puede gestionar cualquiera.
+  is_superadmin  TINYINT(1) NOT NULL DEFAULT 0,
+  -- Negocio que se abre por defecto al iniciar sesión.
+  last_business_id INT UNSIGNED NULL,
   active         TINYINT(1) NOT NULL DEFAULT 1,
   -- Se incrementa al cambiar contraseña o desactivar: invalida sesiones.
   token_version  INT UNSIGNED NOT NULL DEFAULT 1,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_users_username (username),
-  CONSTRAINT fk_users_business FOREIGN KEY (business_id) REFERENCES businesses(id)
+  UNIQUE KEY uq_users_username (username)
+) ENGINE=InnoDB;
+
+-- Pertenencia de un usuario a un negocio, con su rol en él.
+CREATE TABLE IF NOT EXISTS memberships (
+  user_id      INT UNSIGNED NOT NULL,
+  business_id  INT UNSIGNED NOT NULL,
+  role         ENUM('admin','member') NOT NULL DEFAULT 'member',
+  active       TINYINT(1) NOT NULL DEFAULT 1,
+  -- Puede trabajar desde el portal web (los administradores siempre pueden).
+  web_access   TINYINT(1) NOT NULL DEFAULT 0,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, business_id),
+  KEY ix_memberships_business (business_id),
+  CONSTRAINT fk_memberships_user FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_memberships_business FOREIGN KEY (business_id) REFERENCES businesses(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS issuer (
@@ -109,3 +129,11 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ix_attempts (ip, username, created_at)
 ) ENGINE=InnoDB;
+
+-- Migraciones aplicadas (ver database/migrate.php). Una instalación nueva ya
+-- incluye todas.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id          VARCHAR(80) PRIMARY KEY,
+  applied_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+INSERT IGNORE INTO schema_migrations (id) VALUES ('002_multi_negocio');

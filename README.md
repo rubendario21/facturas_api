@@ -5,13 +5,14 @@ Servidor de la app de facturas. Es PHP 8, sin dependencias (no hace falta Compos
 1. **API** para la app móvil: inicio de sesión, sincronización y trabajo sin conexión.
 2. **Portal web** en `/admin`: es la versión web de la app (facturar y cobrar desde el navegador, también desde iPhone) y además la administración de equipo, emisor y negocios.
 
-Producción: **`https://movil.peoplecore.com.co`**
+> [!NOTE]
+> En este documento, `tu-dominio.com` representa el **dominio registrado** para el servidor. Sustitúyelo por el tuyo en los comandos y en `deploy/nginx.conf.example` (`server_name`). El mismo dominio sirve para la API y para el portal web.
 
 | Uso | Dirección |
 |---|---|
-| Servidor que se pone en la app | `https://movil.peoplecore.com.co` |
-| Portal web | `https://movil.peoplecore.com.co/admin` |
-| Comprobación rápida | `https://movil.peoplecore.com.co/status` |
+| Servidor que se pone en la app | `https://tu-dominio.com` |
+| Portal web | `https://tu-dominio.com/admin` |
+| Comprobación rápida | `https://tu-dominio.com/status` |
 
 ---
 
@@ -41,7 +42,7 @@ Producción: **`https://movil.peoplecore.com.co`**
 
 ## Instalación en el servidor (Ubuntu + Nginx + MariaDB)
 
-Requisitos: PHP 8.1 o superior con `fpm`, `mysql`, `mbstring` y `curl`, Nginx, MariaDB y el DNS de `movil.peoplecore.com.co` apuntando a la IP del servidor.
+Requisitos: PHP 8.1 o superior con `fpm`, `mysql`, `mbstring` y `curl`, Nginx, MariaDB y el DNS de `tu-dominio.com` apuntando a la IP del servidor.
 
 ### 1. Código
 
@@ -84,7 +85,7 @@ sudo chown root:www-data config/config.php && sudo chmod 640 config/config.php
 sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/facturas_api
 sudo ln -s /etc/nginx/sites-available/facturas_api /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d movil.peoplecore.com.co
+sudo certbot --nginx -d tu-dominio.com
 ```
 
 Con HTTPS, las contraseñas y los datos viajan cifrados. Certbot renueva el certificado solo; compruébalo con `sudo certbot renew --dry-run`.
@@ -92,13 +93,13 @@ Con HTTPS, las contraseñas y los datos viajan cifrados. Certbot renueva el cert
 ### 5. Comprobación
 
 ```bash
-curl https://movil.peoplecore.com.co/status
+curl https://tu-dominio.com/status
 # {"ok":true,"needs_setup":true}
 ```
 
 ### 6. Alta inicial (una sola vez)
 
-Abre la app, pon como servidor `https://movil.peoplecore.com.co` y crea tu negocio con tu usuario. **Esa primera cuenta es la de superadministrador.** Después entra en `https://movil.peoplecore.com.co/admin` para crear los negocios de tus clientes.
+Abre la app, pon como servidor `https://tu-dominio.com` y crea tu negocio con tu usuario. **Esa primera cuenta es la de superadministrador.** Después entra en `https://tu-dominio.com/admin` para crear los negocios de tus clientes.
 
 ### 7. Copias de seguridad diarias
 
@@ -218,6 +219,6 @@ src/               API: Auth, SyncService, UserService, BusinessService, control
 src/Portal/        portal web (Portal.php) y utilidades de vista
 templates/portal/  páginas del portal, factura y recibo para imprimir
 database/          schema.sql (instalación nueva) y migrate.php (actualizaciones)
-deploy/            nginx.conf.example para movil.peoplecore.com.co
+deploy/            nginx.conf.example (cambia server_name por tu dominio)
 tests/             pruebas automáticas
 ```

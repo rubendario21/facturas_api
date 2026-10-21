@@ -1,5 +1,6 @@
 # Contraseñas y clave de sesiones: cada servidor tiene la suya.
 config/config.php
+config/config.migrate.php
 .idea/
 .vscode/
 *.log

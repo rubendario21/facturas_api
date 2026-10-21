@@ -1,28 +1,45 @@
-# Ejemplo de sitio Nginx para la API (Ubuntu, PHP-FPM).
-# Copia a /etc/nginx/sites-available/facturas_api, crea el enlace en
-# sites-enabled y recarga: sudo nginx -t && sudo systemctl reload nginx
+# Sitio Nginx para movil.peoplecore.com.co (API de la app + portal web en /admin).
+#
+#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/facturas_api
+#   sudo ln -s /etc/nginx/sites-available/facturas_api /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d movil.peoplecore.com.co      # añade HTTPS y la redirección
+#
+# Certbot modifica este bloque para escuchar en 443 con el certificado y
+# redirigir el puerto 80 a HTTPS.
 server {
     listen 80;
-    # Con dominio: server_name api.tudominio.com;  (y luego: sudo certbot --nginx)
-    server_name _;
+    listen [::]:80;
+    server_name movil.peoplecore.com.co;
 
     root /var/www/facturas_api/public;
     index index.php;
 
-    # Logo en base64 + lote de cambios.
+    # Logo en base64, lotes de cambios de la app y subida del logo en el portal.
     client_max_body_size 10m;
+
+    # Cabeceras de seguridad (el portal añade las suyas propias).
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
 
     location / {
         try_files $uri /index.php$is_args$args;
     }
 
+    # Estilos y scripts del portal: caché larga (llevan ?v= con su versión).
+    location /assets/ {
+        expires 30d;
+        access_log off;
+        try_files $uri =404;
+    }
+
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        # Ajusta la versión de PHP instalada en el servidor.
+        # Ajusta la versión de PHP instalada en el servidor (php -v).
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_param HTTP_AUTHORIZATION $http_authorization;
     }
 
-    # Nada fuera de public/ es accesible, pero por si acaso:
+    # Nada fuera de public/ es accesible; además se ocultan archivos ocultos.
     location ~ /\.(?!well-known) { deny all; }
 }

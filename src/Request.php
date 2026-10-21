@@ -19,17 +19,7 @@ final class Request
     public static function fromGlobals(): self
     {
         $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
-        $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-
-        // Permite instalar la API en una subcarpeta (p. ej. /facturas_api/public).
-        $base = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
-        if ($base !== '' && str_starts_with($uri, $base)) {
-            $uri = substr($uri, strlen($base));
-        }
-        $path = '/' . trim($uri, '/');
-        if (str_starts_with($path, '/index.php')) {
-            $path = '/' . trim(substr($path, strlen('/index.php')), '/');
-        }
+        [$path] = self::route();
 
         $body = [];
         $raw = file_get_contents('php://input') ?: '';
@@ -50,6 +40,25 @@ final class Request
         }
 
         return new self($method, $path, $body, $auth, $_SERVER['REMOTE_ADDR'] ?? '');
+    }
+
+    /**
+     * Ruta pedida y carpeta pública donde está instalada la API, p. ej.
+     * ["/auth/login", "/facturas_api/public"] o ["/status", ""].
+     */
+    public static function route(): array
+    {
+        $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+        // Permite instalar la API en una subcarpeta (p. ej. /facturas_api/public).
+        $base = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+        if ($base !== '' && str_starts_with($uri, $base)) {
+            $uri = substr($uri, strlen($base));
+        }
+        $path = '/' . trim($uri, '/');
+        if (str_starts_with($path, '/index.php')) {
+            $path = '/' . trim(substr($path, strlen('/index.php')), '/');
+        }
+        return [$path, $base];
     }
 
     public function bearerToken(): ?string
