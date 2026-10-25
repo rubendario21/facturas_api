@@ -126,18 +126,37 @@ sudo systemctl reload php8.3-fpm
 
 `database/migrate.php` aplica solo lo que falte y se puede ejecutar varias veces sin riesgo.
 
-Las migraciones cambian tablas y el usuario `facturas` solo tiene permisos sobre los datos, que es lo más seguro para el día a día. Por eso se ejecutan con el administrador de MariaDB, con una configuración aparte que se crea una sola vez:
+Las migraciones cambian tablas y el usuario `facturas` solo tiene permisos sobre los datos, que es lo más seguro para el día a día. Por eso se ejecutan con `root` de MariaDB, mediante una configuración aparte que **reutiliza `config.php`** y solo cambia la conexión. Créala una sola vez, desde la carpeta de la API:
 
 ```bash
-sudo cp config/config.php config/config.migrate.php
-sudo nano config/config.migrate.php
-#   'dsn'      => 'mysql:unix_socket=/run/mysqld/mysqld.sock;dbname=facturas;charset=utf8mb4',
-#   'user'     => 'root',
-#   'password' => '',
+sudo tee config/config.migrate.php > /dev/null <<'PHP'
+<?php
+// Igual que config.php pero conectando como root de MariaDB (solo para migraciones).
+// La contraseña no se guarda aquí: se pasa al ejecutar con DB_ROOT_PASSWORD.
+return array_replace_recursive(require __DIR__ . '/config.php', [
+    'db' => [
+        'dsn'      => 'mysql:unix_socket=/run/mysqld/mysqld.sock;dbname=facturas;charset=utf8mb4',
+        'user'     => 'root',
+        'password' => getenv('DB_ROOT_PASSWORD') ?: '',
+    ],
+]);
+PHP
 sudo chmod 600 config/config.migrate.php
 ```
 
-En Ubuntu, `root` de MariaDB entra sin contraseña por el socket cuando se ejecuta con `sudo`. Este archivo no se sube al repositorio.
+Si tu base no se llama `facturas`, cambia `dbname`. Este archivo no se sube al repositorio.
+
+- **Si root de MariaDB no tiene contraseña** (lo habitual en Ubuntu, que entra por el socket con `sudo`), deja `DB_ROOT_PASSWORD` sin definir.
+- **Si root tiene contraseña**, pásala al ejecutar sin escribirla en ningún archivo:
+
+```bash
+read -s -p "Contraseña de root de MariaDB: " DBPASS; echo
+sudo DB_ROOT_PASSWORD="$DBPASS" FACTURAS_CONFIG=config/config.migrate.php php database/migrate.php
+unset DBPASS
+```
+
+> [!TIP]
+> Si al migrar sale `CREATE command denied to user 'facturas'`, el archivo de migración sigue conectando con el usuario normal: vuelve a crearlo con el bloque anterior.
 
 Migraciones incluidas:
 
