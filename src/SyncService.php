@@ -36,6 +36,8 @@ final class SyncService
                     'invoice_delete' => $this->invoiceDelete($data),
                     'payment_add' => $this->paymentAdd($data),
                     'payment_delete' => $this->paymentDelete($data),
+                    'invoice_void' => $this->invoiceVoid($data),
+                    'payment_void' => $this->paymentVoid($data),
                     'issuer_update' => $this->issuerUpdate($data),
                     default => throw new ApiException(422, "Tipo de cambio desconocido: $type"),
                 };
@@ -133,6 +135,12 @@ final class SyncService
             if ($row['deleted_at'] !== null) {
                 return $this->rejected('La factura fue eliminada en otro dispositivo.', ['invoice' => self::invoiceOut($row)]);
             }
+            if ($row['voided_at'] !== null) {
+                return $this->rejected(
+                    "La factura {$row['number']} está anulada y no se puede modificar.",
+                    ['invoice' => self::invoiceOut($row)],
+                );
+            }
             if ($row['paid'] || $this->activePaymentCount($id) > 0) {
                 return $this->rejected(
                     "La factura {$row['number']} ya tiene pagos registrados y no se puede modificar.",
@@ -159,6 +167,10 @@ final class SyncService
             $row = $this->lockInvoice($id);
             if ($row === null || $row['deleted_at'] !== null) {
                 return $this->ok(['invoice' => $row ? self::invoiceOut($row) : null]);
+            }
+            if ($row['voided_at'] !== null) {
+                return $this->rejected("La factura {$row['number']} está anulada; queda en el historial.",
+                    ['invoice' => self::invoiceOut($row)]);
             }
             if ($this->activePaymentCount($id) > 0) {
                 return $this->rejected(
@@ -203,6 +215,10 @@ final class SyncService
             if ($invoice === null || $invoice['deleted_at'] !== null) {
                 return $this->rejected('La factura de este pago no existe o fue eliminada.',
                     ['invoice' => $invoice ? self::invoiceOut($invoice) : null]);
+            }
+            if ($invoice['voided_at'] !== null) {
+                return $this->rejected("La factura {$invoice['number']} está anulada y no admite pagos.",
+                    ['invoice' => self::invoiceOut($invoice)]);
             }
             $balance = self::totalCents($invoice) - $this->paidCents($invoiceId);
             if ($cents > $balance) {
@@ -257,6 +273,87 @@ final class SyncService
                 'invoice' => $this->invoice($row['invoice_id']),
             ]);
         });
+    }
+
+    // -------------------------------------------------------------- anulación
+
+    /**
+     * Anula una factura y todos sus pagos. Se conservan en el historial con
+     * el motivo; el número no se reutiliza.
+     */
+    private function invoiceVoid(array $d): array
+    {
+        $id = Validate::uuid($d['id'] ?? null);
+        $reason = self::reason($d['reason'] ?? null);
+        if ($this->user['role'] !== 'admin') {
+            $row = Database::one('SELECT * FROM invoices WHERE id = ? AND business_id = ?', [$id, $this->businessId]);
+            return $this->rejected('Solo un administrador puede anular facturas.',
+                ['invoice' => $row ? self::invoiceOut($row) : null]);
+        }
+        return Database::transaction(function () use ($id, $reason) {
+            $rev = Database::nextRev($this->businessId);
+            $row = $this->lockInvoice($id);
+            if ($row === null || $row['deleted_at'] !== null) {
+                return $this->rejected('La factura no existe o fue eliminada.',
+                    ['invoice' => $row ? self::invoiceOut($row) : null]);
+            }
+            if ($row['voided_at'] === null) {
+                Database::exec(
+                    'UPDATE invoices SET voided_at = NOW(), void_reason = ?, voided_by = ?, paid = 0, paid_date = NULL, rev = ?
+                     WHERE id = ?',
+                    [$reason, $this->user['id'], $rev, $id],
+                );
+                $paymentReason = mb_substr("Anulación de la factura {$row['number']}: $reason", 0, 255);
+                Database::exec(
+                    'UPDATE payments SET voided_at = NOW(), void_reason = ?, voided_by = ?, rev = ?
+                     WHERE invoice_id = ? AND deleted_at IS NULL AND voided_at IS NULL',
+                    [$paymentReason, $this->user['id'], $rev, $id],
+                );
+            }
+            return $this->ok(['invoice' => $this->invoice($id)]);
+        });
+    }
+
+    /** Anula un pago: deja de contar y el saldo de la factura vuelve a subir. */
+    private function paymentVoid(array $d): array
+    {
+        $id = Validate::uuid($d['id'] ?? null);
+        $reason = self::reason($d['reason'] ?? null);
+        $row = Database::one('SELECT * FROM payments WHERE id = ? AND business_id = ?', [$id, $this->businessId]);
+        if ($this->user['role'] !== 'admin') {
+            return $this->rejected('Solo un administrador puede anular pagos.', [
+                'payment' => $row ? self::paymentOut($row) : null,
+                'invoice' => $row ? $this->invoice($row['invoice_id']) : null,
+            ]);
+        }
+        if ($row === null || $row['deleted_at'] !== null) {
+            return $this->rejected('El pago no existe o fue eliminado.', ['payment' => $row ? self::paymentOut($row) : null]);
+        }
+        return Database::transaction(function () use ($id, $reason, $row) {
+            $rev = Database::nextRev($this->businessId);
+            $this->lockInvoice($row['invoice_id']);
+            $current = Database::one('SELECT * FROM payments WHERE id = ? FOR UPDATE', [$id]);
+            if ($current['voided_at'] === null) {
+                Database::exec(
+                    'UPDATE payments SET voided_at = NOW(), void_reason = ?, voided_by = ?, rev = ? WHERE id = ?',
+                    [$reason, $this->user['id'], $rev, $id],
+                );
+                $this->syncPaidStatus($row['invoice_id'], $rev);
+            }
+            return $this->ok([
+                'payment' => self::paymentOut(Database::one('SELECT * FROM payments WHERE id = ?', [$id])),
+                'invoice' => $this->invoice($row['invoice_id']),
+            ]);
+        });
+    }
+
+    private static function reason(mixed $value): string
+    {
+        $reason = Validate::text($value ?? '', 'El motivo de la anulación', 255, true);
+        if (mb_strlen($reason) < 3) {
+            throw new ApiException(422, 'Escribe el motivo de la anulación (al menos 3 caracteres).');
+        }
+        return $reason;
     }
 
     // ------------------------------------------------------------------ emisor
@@ -344,7 +441,7 @@ final class SyncService
     private function activePaymentCount(string $invoiceId): int
     {
         return (int) Database::one(
-            'SELECT COUNT(*) AS n FROM payments WHERE invoice_id = ? AND deleted_at IS NULL',
+            'SELECT COUNT(*) AS n FROM payments WHERE invoice_id = ? AND deleted_at IS NULL AND voided_at IS NULL',
             [$invoiceId],
         )['n'];
     }
@@ -352,7 +449,7 @@ final class SyncService
     private function paidCents(string $invoiceId): int
     {
         return (int) Database::one(
-            'SELECT COALESCE(SUM(ROUND(amount * 100)), 0) AS c FROM payments WHERE invoice_id = ? AND deleted_at IS NULL',
+            'SELECT COALESCE(SUM(ROUND(amount * 100)), 0) AS c FROM payments WHERE invoice_id = ? AND deleted_at IS NULL AND voided_at IS NULL',
             [$invoiceId],
         )['c'];
     }
@@ -372,8 +469,12 @@ final class SyncService
     private function syncPaidStatus(string $invoiceId, int $rev): void
     {
         $invoice = Database::one('SELECT * FROM invoices WHERE id = ?', [$invoiceId]);
+        if ($invoice['voided_at'] !== null) {
+            Database::exec('UPDATE invoices SET paid = 0, paid_date = NULL, rev = ? WHERE id = ?', [$rev, $invoiceId]);
+            return;
+        }
         $stats = Database::one(
-            'SELECT COUNT(*) AS n, MAX(date) AS last_date FROM payments WHERE invoice_id = ? AND deleted_at IS NULL',
+            'SELECT COUNT(*) AS n, MAX(date) AS last_date FROM payments WHERE invoice_id = ? AND deleted_at IS NULL AND voided_at IS NULL',
             [$invoiceId],
         );
         $paid = (int) $stats['n'] > 0 && $this->paidCents($invoiceId) >= self::totalCents($invoice);
@@ -446,6 +547,9 @@ final class SyncService
             'paid' => (bool) $r['paid'],
             'paid_date' => $r['paid_date'],
             'deleted' => $r['deleted_at'] !== null,
+            'voided' => $r['voided_at'] !== null,
+            'voided_at' => $r['voided_at'],
+            'void_reason' => $r['void_reason'],
             'created_by' => $r['created_by'] !== null ? (int) $r['created_by'] : null,
             'rev' => (int) $r['rev'],
         ];
@@ -462,6 +566,9 @@ final class SyncService
             'method' => $r['method'],
             'note' => $r['note'],
             'deleted' => $r['deleted_at'] !== null,
+            'voided' => $r['voided_at'] !== null,
+            'voided_at' => $r['voided_at'],
+            'void_reason' => $r['void_reason'],
             'created_by' => $r['created_by'] !== null ? (int) $r['created_by'] : null,
             'rev' => (int) $r['rev'],
         ];

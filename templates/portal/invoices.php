@@ -1,7 +1,7 @@
 <?php
 use App\Portal\View;
 
-$tabs = ['todas' => 'Todas', 'por-cobrar' => 'Por cobrar', 'vencidas' => 'Vencidas', 'pagadas' => 'Pagadas'];
+$tabs = ['todas' => 'Todas', 'por-cobrar' => 'Por cobrar', 'vencidas' => 'Vencidas', 'pagadas' => 'Pagadas', 'anuladas' => 'Anuladas'];
 $link = fn(array $over) => View::url('/facturas') . '?' . http_build_query(array_filter(
     $over + ['estado' => $status, 'q' => $q], fn($v) => $v !== '' && $v !== 'todas' && $v !== 1));
 ?>
@@ -46,8 +46,8 @@ $link = fn(array $over) => View::url('/facturas') . '?' . http_build_query(array
           <td class="num"><?= $e(View::date($i['issue_date'])) ?></td>
           <td class="num<?= $i['overdue'] ? ' overdue-text' : '' ?>"><?= $e(View::date($i['due_date'])) ?></td>
           <td><?= View::status($i['status']) ?></td>
-          <td class="right num"><?= $e(View::money($i['total'], $currency)) ?></td>
-          <td class="right num"><?= $i['paid'] ? '<span class="muted">—</span>' : $e(View::money($i['balance'], $currency)) ?></td>
+          <td class="right num<?= $i['voided'] ? ' strike' : '' ?>"><?= $e(View::money($i['total'], $currency)) ?></td>
+          <td class="right num"><?= $i['paid'] || $i['voided'] ? '<span class="muted">—</span>' : $e(View::money($i['balance'], $currency)) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>

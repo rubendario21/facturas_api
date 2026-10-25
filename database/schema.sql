@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at      DATETIME NULL,
+  -- Anulada: sigue en el historial, con el motivo y quién la anuló.
+  voided_at       DATETIME NULL,
+  void_reason     VARCHAR(255) NULL,
+  voided_by       INT UNSIGNED NULL,
   rev             BIGINT UNSIGNED NOT NULL,
   UNIQUE KEY uq_invoices_number (business_id, number),
   KEY ix_invoices_rev (business_id, rev),
@@ -113,6 +117,10 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at      DATETIME NULL,
+  -- Anulada: sigue en el historial, con el motivo y quién la anuló.
+  voided_at       DATETIME NULL,
+  void_reason     VARCHAR(255) NULL,
+  voided_by       INT UNSIGNED NULL,
   rev             BIGINT UNSIGNED NOT NULL,
   UNIQUE KEY uq_payments_receipt (business_id, receipt_number),
   KEY ix_payments_rev (business_id, rev),
@@ -136,4 +144,4 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   id          VARCHAR(80) PRIMARY KEY,
   applied_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
-INSERT IGNORE INTO schema_migrations (id) VALUES ('002_multi_negocio');
+INSERT IGNORE INTO schema_migrations (id) VALUES ('002_multi_negocio'), ('003_anulaciones');

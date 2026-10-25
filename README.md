@@ -31,6 +31,7 @@ Servidor de la app de facturas. Es PHP 8, sin dependencias (no hace falta Compos
 - La numeración de facturas y recibos **no se repite**, aunque se creen sin conexión en varios dispositivos o desde la web. Las facturas creadas sin conexión se numeran al sincronizar.
 - Un pago **no puede superar el saldo**, aunque dos personas cobren a la vez.
 - Una factura **con pagos no se edita ni se elimina**. Queda pagada cuando los pagos cubren el total.
+- **Anulaciones** (solo administradores, con motivo obligatorio): anular una factura anula todos sus pagos; anular un pago devuelve su importe al saldo. Todo queda en el historial con el motivo, la fecha y quién anuló, y los números no se reutilizan.
 - **Desactivar a una persona o un negocio**, o cambiarle la contraseña, **cierra sus sesiones al momento** en la app y en la web.
 - El administrador de un cliente **no puede cambiar el nombre ni la contraseña** de alguien que también trabaja en otros negocios, como el superadministrador. Eso solo lo hace el superadministrador.
 - Seguridad:
@@ -142,6 +143,7 @@ Migraciones incluidas:
 
 | Migración | Qué hace |
 |---|---|
+| `003_anulaciones` | Permite anular facturas y pagos con motivo, fecha y quién anuló. No cambia los datos existentes. |
 | `002_multi_negocio` | Pasa de un negocio a varios. Cada usuario se convierte en miembro de su negocio con el mismo rol, el primer administrador pasa a ser superadministrador y se añade el acceso web por persona. No se pierden facturas, pagos ni usuarios. |
 
 ---
@@ -209,6 +211,7 @@ La de concurrencia necesita un servidor que atienda peticiones en paralelo, como
 
 Tipos de cambio en `/sync`:
 - `invoice_upsert`, `invoice_delete` y `payment_add`, para cualquier miembro.
+- `invoice_void` y `payment_void` (`{id, reason}`), solo para administradores. Anular una factura anula todos sus pagos.
 - `payment_delete` e `issuer_update`, solo para administradores.
 
 ## Estructura

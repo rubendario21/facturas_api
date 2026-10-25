@@ -458,3 +458,28 @@ h3 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
 /* Enlace dentro de una tabla que debe verse como enlace (p. ej. el recibo). */
 .table td a.link { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .sub-inline { font-weight: 400; }
+
+/* ------------------------------------------------------------ anulación */
+
+.badge--voided { color: var(--overdue); background: transparent; border: 1px solid color-mix(in srgb, var(--overdue) 55%, transparent); }
+.strike { text-decoration: line-through; color: var(--muted); }
+.is-voided { text-decoration: line-through; text-decoration-thickness: 2px; color: var(--muted); }
+.is-voided-row td { color: var(--muted); border-bottom: 0; }
+.void-reason-row td { padding-top: 0; }
+.void-notice {
+  display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; margin: -8px 0 20px;
+  border: 1px solid color-mix(in srgb, var(--overdue) 45%, transparent); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--overdue) 7%, var(--surface));
+}
+.void-notice strong { color: var(--overdue); }
+.void-box summary { list-style: none; cursor: pointer; }
+.void-box summary::-webkit-details-marker { display: none; }
+.void-box[open] summary { margin-bottom: 10px; }
+.void-form { display: flex; flex-direction: column; gap: 10px; min-width: 240px; text-align: left; white-space: normal; }
+.void-box--panel summary.btn { width: 100%; }
+td .void-box[open] { position: relative; }
+td .void-box[open] .void-form {
+  position: absolute; right: 0; z-index: 5; width: 280px; padding: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}

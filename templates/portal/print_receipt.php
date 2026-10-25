@@ -28,6 +28,7 @@ $logoMime = !empty($is['logo']) && str_starts_with($is['logo'], "\xFF\xD8") ? 'i
       <h1>RECIBO DE PAGO</h1>
       <strong class="num">Nº <?= $e($p['receipt_number']) ?></strong>
       <span class="num">Fecha: <?= $e(View::date($p['date'])) ?></span>
+      <?php if ($p['voided_at'] !== null): ?><span class="stamp stamp--void">ANULADO</span><?php endif; ?>
     </div>
   </header>
 
@@ -49,7 +50,12 @@ $logoMime = !empty($is['logo']) && str_starts_with($is['logo'], "\xFF\xD8") ? 'i
     <div><dt>Este pago</dt><dd class="num"><?= $e(View::money($amount, $currency)) ?></dd></div>
     <div class="sum__total"><dt>Saldo pendiente</dt><dd class="num"><?= $e(View::money($balanceAfter, $currency)) ?></dd></div>
   </dl>
-  <?php if ($settles): ?><p class="stamp-wrap"><span class="stamp">FACTURA PAGADA</span></p><?php endif; ?>
+  <?php if ($p['voided_at'] !== null): ?>
+    <section class="void-banner">
+      <strong>Recibo anulado el <?= $e(View::date(substr((string) $p['voided_at'], 0, 10))) ?></strong>
+      <span>Motivo: <?= $e($p['void_reason']) ?></span>
+    </section>
+  <?php elseif ($settles): ?><p class="stamp-wrap"><span class="stamp">FACTURA PAGADA</span></p><?php endif; ?>
 
   <footer class="signature">
     <span class="signature__line"></span>

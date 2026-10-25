@@ -79,9 +79,9 @@ final class Portal
             ['POST', "#^/facturas/$uuid/editar$#", fn($id) => $this->saveInvoice($id), 'negocio'],
             ['GET', "#^/facturas/$uuid/imprimir$#", fn($id) => $this->printInvoice($id), 'negocio'],
             ['POST', "#^/facturas/$uuid/pagos$#", fn($id) => $this->addPayment($id), 'negocio'],
-            ['POST', "#^/facturas/$uuid/eliminar$#", fn($id) => $this->deleteInvoice($id), 'negocio'],
+            ['POST', "#^/facturas/$uuid/anular$#", fn($id) => $this->voidInvoice($id), 'admin'],
             ['GET', "#^/pagos/$uuid/recibo$#", fn($id) => $this->printReceipt($id), 'negocio'],
-            ['POST', "#^/pagos/$uuid/eliminar$#", fn($id) => $this->deletePayment($id), 'admin'],
+            ['POST', "#^/pagos/$uuid/anular$#", fn($id) => $this->voidPayment($id), 'admin'],
 
             ['GET', '#^/equipo$#', fn() => $this->team(), 'admin'],
             ['GET', '#^/equipo/nuevo$#', fn() => $this->userForm(null), 'admin'],
@@ -282,18 +282,19 @@ final class Portal
     {
         $invoices = $this->loadInvoices();
         $today = date('Y-m-d');
-        $open = array_filter($invoices, fn($i) => !$i['paid']);
+        $open = array_filter($invoices, fn($i) => !$i['paid'] && !$i['voided']);
         $overdue = array_filter($open, fn($i) => $i['overdue']);
         usort($overdue, fn($a, $b) => strcmp($a['due_date'], $b['due_date']));
 
         $collected = (float) Database::one(
             'SELECT COALESCE(SUM(amount), 0) AS t FROM payments
-             WHERE business_id = ? AND deleted_at IS NULL AND date >= ? AND date <= ?',
+             WHERE business_id = ? AND deleted_at IS NULL AND voided_at IS NULL AND date >= ? AND date <= ?',
             [$this->user['business_id'], date('Y-m-01'), $today],
         )['t'];
         $recentPayments = Database::all(
             'SELECT p.*, i.client_name, i.number FROM payments p JOIN invoices i ON i.id = p.invoice_id
-             WHERE p.business_id = ? AND p.deleted_at IS NULL ORDER BY p.date DESC, p.created_at DESC LIMIT 8',
+             WHERE p.business_id = ? AND p.deleted_at IS NULL AND p.voided_at IS NULL
+             ORDER BY p.date DESC, p.created_at DESC LIMIT 8',
             [$this->user['business_id']],
         );
         $this->page('dashboard', 'Resumen', [
@@ -320,9 +321,10 @@ final class Portal
         $status = (string) ($_GET['estado'] ?? 'todas');
         $q = trim((string) ($_GET['q'] ?? ''));
         $filtered = array_values(array_filter($this->loadInvoices($q), fn($i) => match ($status) {
-            'por-cobrar' => !$i['paid'],
+            'por-cobrar' => !$i['paid'] && !$i['voided'],
             'vencidas' => $i['overdue'],
             'pagadas' => $i['paid'],
+            'anuladas' => $i['voided'],
             default => true,
         }));
         $pages = max(1, (int) ceil(count($filtered) / self::PAGE_SIZE));
@@ -355,7 +357,10 @@ final class Portal
     private function invoicePayments(string $id): array
     {
         return Database::all(
-            'SELECT p.*, u.name AS created_by_name FROM payments p LEFT JOIN users u ON u.id = p.created_by
+            'SELECT p.*, u.name AS created_by_name, v.name AS voided_by_name
+             FROM payments p
+             LEFT JOIN users u ON u.id = p.created_by
+             LEFT JOIN users v ON v.id = p.voided_by
              WHERE p.invoice_id = ? AND p.deleted_at IS NULL ORDER BY p.date, p.created_at',
             [$id],
         );
@@ -366,13 +371,15 @@ final class Portal
         $row = $this->findInvoice($id);
         $payments = $this->invoicePayments($id);
         $creator = $row['created_by'] ? Database::one('SELECT name FROM users WHERE id = ?', [$row['created_by']]) : null;
+        $voider = $row['voided_by'] ? Database::one('SELECT name FROM users WHERE id = ?', [$row['voided_by']]) : null;
         $summary = self::summarize($row, $payments);
         $this->page('invoice', 'Factura ' . $row['number'], [
             'invoice' => $summary,
             'items' => json_decode($row['items'], true) ?: [],
             'payments' => $payments,
             'creator' => $creator['name'] ?? null,
-            'canDeletePayments' => $this->isAdmin(),
+            'voider' => $voider['name'] ?? null,
+            'canVoid' => $this->isAdmin(),
             'paymentError' => $_SESSION['payment_error'] ?? null,
             'paymentValues' => $_SESSION['payment_values'] ?? null,
             'methods' => ['Efectivo', 'Transferencia', 'Tarjeta', 'Otro'],
@@ -383,7 +390,12 @@ final class Portal
     private function invoiceForm(?string $id, ?string $error = null, ?array $values = null): void
     {
         $row = $id ? $this->findInvoice($id) : null;
-        if ($row && ($row['paid'] || $this->invoicePayments($id))) {
+        if ($row && $row['voided_at'] !== null) {
+            $this->flash('error', 'La factura está anulada y no se puede modificar.');
+            $this->redirect("/facturas/$id");
+        }
+        $activePayments = $row ? array_filter($this->invoicePayments($id), fn($p) => $p['voided_at'] === null) : [];
+        if ($row && ($row['paid'] || $activePayments)) {
             $this->flash('error', 'La factura tiene pagos registrados y ya no se puede modificar.');
             $this->redirect("/facturas/$id");
         }
@@ -463,25 +475,25 @@ final class Portal
         $this->redirect("/facturas/$invoiceId");
     }
 
-    private function deleteInvoice(string $id): void
+    /** Anula la factura y todos sus pagos (quedan en el historial con el motivo). */
+    private function voidInvoice(string $id): void
     {
-        $result = $this->push('invoice_delete', ['id' => $id]);
-        if ($result['status'] === 'ok') {
-            $this->flash('ok', 'Factura eliminada. Desaparecerá de la app al sincronizar.');
-            $this->redirect('/facturas');
-        }
-        $this->flash('error', $result['message']);
+        $result = $this->push('invoice_void', ['id' => $id, 'reason' => (string) ($_POST['reason'] ?? '')]);
+        $this->flash($result['status'] === 'ok' ? 'ok' : 'error', $result['status'] === 'ok'
+            ? 'Factura anulada junto con sus pagos. La app lo verá al sincronizar.'
+            : $result['message']);
         $this->redirect("/facturas/$id");
     }
 
-    private function deletePayment(string $id): void
+    /** Anula un pago: deja de contar y el saldo de la factura vuelve a subir. */
+    private function voidPayment(string $id): void
     {
-        $result = $this->push('payment_delete', ['id' => $id]);
-        $invoiceId = $result['payment']['invoice_id'] ?? null;
+        $result = $this->push('payment_void', ['id' => $id, 'reason' => (string) ($_POST['reason'] ?? '')]);
+        $invoiceId = $result['payment']['invoice_id'] ?? ($_POST['invoice_id'] ?? null);
         $this->flash($result['status'] === 'ok' ? 'ok' : 'error', $result['status'] === 'ok'
-            ? 'Pago eliminado. El saldo de la factura se actualizó.'
+            ? 'Pago anulado. El saldo de la factura se actualizó.'
             : $result['message']);
-        $this->redirect($invoiceId ? "/facturas/$invoiceId" : '/facturas');
+        $this->redirect($invoiceId && preg_match('/^[0-9a-f-]{36}$/', (string) $invoiceId) ? "/facturas/$invoiceId" : '/facturas');
     }
 
     /** Factura lista para imprimir o guardar como PDF desde el navegador. */
@@ -517,7 +529,9 @@ final class Portal
             if ($other['id'] === $p['id']) {
                 break;
             }
-            $previous += (int) round($other['amount'] * 100);
+            if ($other['voided_at'] === null) {
+                $previous += (int) round($other['amount'] * 100);
+            }
         }
         echo View::render('print_receipt', [
             'title' => 'Recibo ' . $p['receipt_number'],
@@ -774,7 +788,7 @@ final class Portal
         $paid = [];
         foreach (Database::all(
             'SELECT invoice_id, COALESCE(SUM(ROUND(amount * 100)), 0) AS c, COUNT(*) AS n FROM payments
-             WHERE business_id = ? AND deleted_at IS NULL GROUP BY invoice_id',
+             WHERE business_id = ? AND deleted_at IS NULL AND voided_at IS NULL GROUP BY invoice_id',
             [$this->user['business_id']],
         ) as $p) {
             $paid[$p['invoice_id']] = $p;
@@ -786,21 +800,25 @@ final class Portal
     {
         $totalCents = SyncService::totalCents($row);
         if ($payments !== null) {
-            $paidCents = array_sum(array_map(fn($p) => (int) round($p['amount'] * 100), $payments));
-            $count = count($payments);
+            $active = array_filter($payments, fn($p) => ($p['voided_at'] ?? null) === null);
+            $paidCents = array_sum(array_map(fn($p) => (int) round($p['amount'] * 100), $active));
+            $count = count($active);
         } else {
             $paidCents = (int) ($paidRow['c'] ?? 0);
             $count = (int) ($paidRow['n'] ?? 0);
         }
         $isPaid = (bool) $row['paid'];
-        $overdue = !$isPaid && $row['due_date'] !== null && $row['due_date'] < date('Y-m-d');
+        $voided = ($row['voided_at'] ?? null) !== null;
+        $overdue = !$isPaid && !$voided && $row['due_date'] !== null && $row['due_date'] < date('Y-m-d');
         return $row + [
+            'voided' => $voided,
             'total' => $totalCents / 100,
             'paid_amount' => $paidCents / 100,
             'balance' => max(0, $totalCents - $paidCents) / 100,
             'payment_count' => $count,
             'overdue' => $overdue,
-            'status' => $isPaid ? 'paid' : ($overdue ? 'overdue' : ($count > 0 ? 'partial' : 'pending')),
+            'status' => $voided ? 'voided'
+                : ($isPaid ? 'paid' : ($overdue ? 'overdue' : ($count > 0 ? 'partial' : 'pending'))),
         ];
     }
 

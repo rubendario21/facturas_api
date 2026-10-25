@@ -148,6 +148,42 @@ sync($adminToken, [$invoice(uuid())]);
 [$s, $r] = sync($anaToken, [], $full['cursor']);
 check('solo recibe lo nuevo', count($r['invoices']) === 1 && $r['invoices'][0]['number'] === 'F-0009', $r);
 
+echo "Anulaciones\n";
+$invV = uuid();
+$pv1 = uuid();
+$pv2 = uuid();
+[$s, $r] = sync($adminToken, [$invoice($invV), $payment($pv1, $invV, 50), $payment($pv2, $invV, 69)]);
+check('factura de prueba pagada con dos pagos', ($r['results'][2]['invoice']['paid'] ?? false) === true, $r);
+[$s, $r] = sync($anaToken, [['type' => 'payment_void', 'data' => ['id' => $pv2, 'reason' => 'Error']]]);
+check('un miembro no puede anular pagos', $r['results'][0]['status'] === 'rejected', $r);
+[$s, $r] = sync($adminToken, [['type' => 'payment_void', 'data' => ['id' => $pv2, 'reason' => '']]]);
+check('anular exige un motivo', $r['results'][0]['status'] === 'rejected' && str_contains($r['results'][0]['message'], 'motivo'), $r);
+[$s, $r] = sync($adminToken, [['type' => 'payment_void', 'data' => ['id' => $pv2, 'reason' => 'Transferencia devuelta']]]);
+check('anular un pago ya cobrado lo deja anulado con su motivo',
+    ($r['results'][0]['payment']['voided'] ?? false) === true
+    && ($r['results'][0]['payment']['void_reason'] ?? '') === 'Transferencia devuelta', $r);
+check('la factura vuelve a quedar pendiente', ($r['results'][0]['invoice']['paid'] ?? true) === false, $r);
+[$s, $r] = sync($adminToken, [['type' => 'payment_void', 'data' => ['id' => $pv2, 'reason' => 'Otra vez']]]);
+check('anular dos veces no cambia el motivo', ($r['results'][0]['payment']['void_reason'] ?? '') === 'Transferencia devuelta', $r);
+[$s, $r] = sync($adminToken, [$payment(uuid(), $invV, 69)]);
+check('el saldo del pago anulado se puede volver a cobrar', ($r['results'][0]['invoice']['paid'] ?? false) === true, $r);
+[$s, $r] = sync($adminToken, [['type' => 'invoice_void', 'data' => ['id' => $invV, 'reason' => 'El cliente canceló el servicio']]]);
+check('anular la factura', ($r['results'][0]['invoice']['voided'] ?? false) === true
+    && ($r['results'][0]['invoice']['paid'] ?? true) === false, $r);
+$voidedPayments = array_values(array_filter($r['payments'], fn($x) => $x['invoice_id'] === $invV));
+$reasons = array_column($voidedPayments, 'void_reason', 'id');
+check('anular la factura anula todos sus pagos', count($voidedPayments) === 3
+    && !array_filter($voidedPayments, fn($x) => !$x['voided']), $voidedPayments);
+check('los pagos reciben el motivo de la factura; el ya anulado conserva el suyo',
+    $reasons[$pv2] === 'Transferencia devuelta'
+    && str_contains($reasons[$pv1], 'El cliente canceló el servicio'), $reasons);
+[$s, $r] = sync($adminToken, [$invoice($invV, ['client_name' => 'Cambio'])]);
+check('una factura anulada no se edita', $r['results'][0]['status'] === 'rejected', $r);
+[$s, $r] = sync($adminToken, [$payment(uuid(), $invV, 10)]);
+check('una factura anulada no admite pagos', $r['results'][0]['status'] === 'rejected', $r);
+[$s, $r] = sync($adminToken, [['type' => 'invoice_delete', 'data' => ['id' => $invV]]]);
+check('una factura anulada no se elimina (queda en el historial)', $r['results'][0]['status'] === 'rejected', $r);
+
 echo "Sesiones\n";
 [$s, $r] = call('POST', '/auth/refresh', ['refresh_token' => $admin['refresh_token']]);
 check('renovar sesión', $s === 200 && isset($r['access_token']), $r);

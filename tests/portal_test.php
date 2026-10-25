@@ -152,11 +152,31 @@ check('guardar emisor con logo', $st === 302, [$st, $loc]);
 check('la app recibe el emisor y el logo', ($sync['issuer']['name'] ?? '') === 'Emisor desde portal'
     && base64_decode($sync['issuer']['logo'] ?? '') === file_get_contents($png), $sync['issuer'] ?? null);
 
-echo "Pagos\n";
-[$st, , $loc] = web('POST', "/admin/pagos/$paymentId/eliminar", ['_csrf' => $csrf]);
-check('eliminar un pago vuelve al detalle', $st === 302 && str_contains((string) $loc, $invoiceId), [$st, $loc]);
+echo "Anular pagos y facturas\n";
+[, $html] = web('POST', "/admin/pagos/$paymentId/anular", ['_csrf' => $csrf, 'invoice_id' => $invoiceId, 'reason' => '']);
 [, $html] = web('GET', "/admin/facturas/$invoiceId");
-check('el saldo vuelve a ser el total', str_contains($html, 'Saldo $ 100,00'), $html);
+check('anular un pago sin motivo se rechaza', str_contains($html, 'motivo') && !str_contains($html, 'Motivo: '), $html);
+[$st, , $loc] = web('POST', "/admin/pagos/$paymentId/anular", ['_csrf' => $csrf, 'invoice_id' => $invoiceId, 'reason' => 'Cheque sin fondos']);
+check('anular un pago vuelve al detalle', $st === 302 && str_contains((string) $loc, $invoiceId), [$st, $loc]);
+[, $html] = web('GET', "/admin/facturas/$invoiceId");
+check('el pago queda anulado con su motivo y el saldo vuelve al total',
+    str_contains($html, 'Motivo: Cheque sin fondos') && str_contains($html, 'Saldo $ 100,00'), $html);
+[$st, $html] = web('GET', '/admin/pagos/' . $paymentId . '/recibo');
+check('el recibo del pago anulado lleva el sello ANULADO', str_contains($html, 'ANULADO') && str_contains($html, 'Cheque sin fondos'), $html);
+[$st, , $loc] = web('POST', "/admin/facturas/$invoiceId/anular", ['_csrf' => $csrf, 'reason' => 'Factura duplicada']);
+[, $html] = web('GET', "/admin/facturas/$invoiceId");
+check('anular la factura muestra el aviso con el motivo', str_contains($html, 'Factura anulada') && str_contains($html, 'Factura duplicada'), $html);
+check('una factura anulada no ofrece registrar pagos ni editar',
+    !str_contains($html, 'Registrar pago o abono') && !str_contains($html, '/editar"'), $html);
+[, $html] = web('GET', "/admin/facturas/$invoiceId/imprimir");
+check('el PDF de la factura lleva el sello ANULADA', str_contains($html, 'ANULADA') && str_contains($html, 'Factura duplicada'), $html);
+[, $html] = web('GET', '/admin/facturas?estado=anuladas');
+check('aparece en el filtro Anuladas', str_contains($html, 'Cliente portal'), $html);
+[, $html] = web('GET', '/admin/facturas?estado=por-cobrar');
+check('y ya no aparece en Por cobrar', !str_contains($html, 'Cliente portal'), $html);
+[, $sync] = api('POST', '/sync', ['cursor' => 0, 'changes' => []], $token);
+$fromApp = array_values(array_filter($sync['invoices'], fn($x) => $x['id'] === $invoiceId))[0] ?? [];
+check('la app recibe la anulación', ($fromApp['voided'] ?? false) === true && ($fromApp['void_reason'] ?? '') === 'Factura duplicada', $fromApp);
 
 echo "Salir\n";
 web('POST', '/admin/salir', ['_csrf' => $csrf]);

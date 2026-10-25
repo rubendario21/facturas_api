@@ -73,6 +73,18 @@ $migrations = [
             $pdo->exec('ALTER TABLE users DROP COLUMN role');
         }
     },
+    // Anulación de facturas y pagos: se conservan en el historial con su
+    // motivo, quién los anuló y cuándo.
+    '003_anulaciones' => function () use ($pdo, $columnExists): void {
+        foreach (['invoices', 'payments'] as $table) {
+            if (!$columnExists($table, 'voided_at')) {
+                $pdo->exec("ALTER TABLE $table
+                    ADD COLUMN voided_at DATETIME NULL,
+                    ADD COLUMN void_reason VARCHAR(255) NULL,
+                    ADD COLUMN voided_by INT UNSIGNED NULL");
+            }
+        }
+    },
 ];
 
 $applied = array_column(Database::all('SELECT id FROM schema_migrations'), 'id');

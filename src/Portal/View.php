@@ -60,6 +60,7 @@ final class View
             'paid' => ['Pagada', 'paid'],
             'overdue' => ['Vencida', 'overdue'],
             'partial' => ['Con abonos', 'partial'],
+            'voided' => ['Anulada', 'voided'],
             default => ['Pendiente', 'pending'],
         };
         return "<span class=\"badge badge--$class\">$label</span>";

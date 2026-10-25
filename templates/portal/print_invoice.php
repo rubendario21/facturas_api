@@ -23,9 +23,17 @@ $logoMime = !empty($is['logo']) && str_starts_with($is['logo'], "\xFF\xD8") ? 'i
       <strong class="num">Nº <?= $e($i['number']) ?></strong>
       <span class="num">Fecha: <?= $e(View::date($i['issue_date'])) ?></span>
       <?php if ($i['due_date']): ?><span class="num">Vencimiento: <?= $e(View::date($i['due_date'])) ?></span><?php endif; ?>
-      <?php if ($i['paid']): ?><span class="stamp">PAGADA <?= $e(View::date($i['paid_date'])) ?></span><?php endif; ?>
+      <?php if ($i['voided']): ?><span class="stamp stamp--void">ANULADA</span>
+      <?php elseif ($i['paid']): ?><span class="stamp">PAGADA <?= $e(View::date($i['paid_date'])) ?></span><?php endif; ?>
     </div>
   </header>
+
+  <?php if ($i['voided']): ?>
+    <section class="void-banner">
+      <strong>Factura anulada el <?= $e(View::date(substr((string) $i['voided_at'], 0, 10))) ?></strong>
+      <span>Motivo: <?= $e($i['void_reason']) ?></span>
+    </section>
+  <?php endif; ?>
 
   <section class="client">
     <span class="label">Facturar a</span>
@@ -53,7 +61,7 @@ $logoMime = !empty($is['logo']) && str_starts_with($is['logo'], "\xFF\xD8") ? 'i
     <div><dt>Base imponible</dt><dd class="num"><?= $e(View::money($subtotal, $currency)) ?></dd></div>
     <div><dt>IVA (<?= $e($qty($i['tax_rate'])) ?> %)</dt><dd class="num"><?= $e(View::money($i['total'] - $subtotal, $currency)) ?></dd></div>
     <div class="sum__total"><dt>TOTAL</dt><dd class="num"><?= $e(View::money($i['total'], $currency)) ?></dd></div>
-    <?php if ($i['payment_count'] > 0): ?>
+    <?php if ($i['payment_count'] > 0 && !$i['voided']): ?>
       <div><dt>Pagado</dt><dd class="num"><?= $e(View::money($i['paid_amount'], $currency)) ?></dd></div>
       <div class="sum__total"><dt>Saldo pendiente</dt><dd class="num"><?= $e(View::money($i['balance'], $currency)) ?></dd></div>
     <?php endif; ?>
