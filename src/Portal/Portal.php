@@ -774,15 +774,42 @@ final class Portal
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
     }
 
+    /**
+     * Un solo campo de búsqueda (igual que en la app):
+     * - cliente o identificación: todas las palabras, en cualquier orden; la
+     *   intercalación utf8mb4_unicode_ci ya ignora mayúsculas y tildes;
+     * - número: el texto aparece en el número, o la cifra coincide aunque falten
+     *   ceros o guion ("7", "f7", "F-7" y "0007" encuentran F-0007).
+     *
+     * @return array{0: string, 1: list<string|int>}
+     */
+    private static function searchCondition(string $q): array
+    {
+        $like = fn(string $s) => '%' . addcslashes($s, '%_\\') . '%';
+        $words = preg_split('/\s+/u', trim($q), -1, PREG_SPLIT_NO_EMPTY);
+        $byClient = implode(' AND ', array_fill(0, count($words), '(client_name LIKE ? OR client_tax_id LIKE ?)'));
+        $params = [];
+        foreach ($words as $w) {
+            array_push($params, $like($w), $like($w));
+        }
+        $or = ["($byClient)", 'number LIKE ?'];
+        $params[] = $like(trim($q));
+        if (preg_match('/^([a-z]*)[\s-]*(\d{1,9})$/i', trim($q), $m)) {
+            $or[] = "(CAST(REGEXP_SUBSTR(number, '[0-9]+$') AS UNSIGNED) = ? AND number LIKE ?)";
+            array_push($params, (int) $m[2], addcslashes($m[1], '%_\\') . '%');
+        }
+        return ['(' . implode(' OR ', $or) . ')', $params];
+    }
+
     /** Facturas activas con su total, pagado, saldo y estado calculados. */
     private function loadInvoices(string $q = ''): array
     {
         $sql = 'SELECT * FROM invoices WHERE business_id = ? AND deleted_at IS NULL';
         $params = [$this->user['business_id']];
         if ($q !== '') {
-            $sql .= ' AND (client_name LIKE ? OR number LIKE ? OR client_tax_id LIKE ?)';
-            $like = '%' . addcslashes($q, '%_\\') . '%';
-            array_push($params, $like, $like, $like);
+            [$where, $searchParams] = self::searchCondition($q);
+            $sql .= " AND $where";
+            array_push($params, ...$searchParams);
         }
         $rows = Database::all($sql . ' ORDER BY issue_date DESC, number DESC', $params);
         $paid = [];

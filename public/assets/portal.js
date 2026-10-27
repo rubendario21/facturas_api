@@ -17,11 +17,11 @@
   });
 
   // La fila entera abre el detalle (el enlace interior sigue funcionando con teclado).
-  document.querySelectorAll('tr[data-href]').forEach((row) => {
-    row.addEventListener('click', (ev) => {
-      if (ev.target.closest('a, button, form')) return;
-      window.location.href = row.dataset.href;
-    });
+  // Delegado en el documento para que también valga en resultados de la búsqueda.
+  document.addEventListener('click', (ev) => {
+    const row = ev.target.closest('tr[data-href]');
+    if (!row || ev.target.closest('a, button, form')) return;
+    window.location.href = row.dataset.href;
   });
 
   // Acciones destructivas: confirmación con el detalle de lo que se va a borrar.
@@ -43,6 +43,42 @@
     });
   });
 })();
+
+// Buscador de facturas: filtra mientras se escribe, sin recargar la página
+// (así no se pierde el foco). Sin JavaScript sigue funcionando con Enter.
+document.querySelectorAll('[data-live-search]').forEach((form) => {
+  const input = form.querySelector('input[type="search"]');
+  let timer = 0;
+  let pending = null;
+  const run = async () => {
+    const params = new URLSearchParams(new FormData(form));
+    if (!params.get('q').trim()) params.delete('q');
+    const url = form.action + (params.size ? '?' + params : '');
+    pending?.abort();
+    pending = new AbortController();
+    try {
+      const res = await fetch(url, { signal: pending.signal, headers: { Accept: 'text/html' } });
+      if (!res.ok) throw new Error(res.status);
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      document.querySelectorAll('[data-live]').forEach((el) => {
+        const fresh = doc.querySelector('[data-live="' + el.dataset.live + '"]');
+        if (fresh) el.replaceWith(fresh);
+      });
+      history.replaceState(null, '', url);
+    } catch (e) {
+      if (e.name !== 'AbortError') form.submit();
+    }
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(run, 250);
+  });
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    clearTimeout(timer);
+    run();
+  });
+});
 
 // Selector de negocio: cambia al elegir.
 document.querySelectorAll('[data-autosubmit]').forEach((sel) => {

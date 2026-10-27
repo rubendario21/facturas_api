@@ -14,23 +14,27 @@ $link = fn(array $over) => View::url('/facturas') . '?' . http_build_query(array
 </header>
 
 <div class="toolbar">
-  <nav class="tabs" aria-label="Filtrar por estado">
+  <nav class="tabs" aria-label="Filtrar por estado" data-live="tabs">
     <?php foreach ($tabs as $key => $label): ?>
       <a href="<?= $e($link(['estado' => $key, 'pagina' => 1])) ?>" class="tabs__tab<?= $status === $key ? ' is-active' : '' ?>"
          <?= $status === $key ? 'aria-current="page"' : '' ?>><?= $e($label) ?></a>
     <?php endforeach; ?>
   </nav>
-  <form class="search" method="get" action="<?= View::url('/facturas') ?>" role="search">
+  <form class="search" method="get" action="<?= View::url('/facturas') ?>" role="search" data-live-search>
     <?php if ($status !== 'todas'): ?><input type="hidden" name="estado" value="<?= $e($status) ?>"><?php endif; ?>
     <?= View::icon('buscar') ?>
-    <input type="search" name="q" value="<?= $e($q) ?>" placeholder="Cliente, número o identificación" aria-label="Buscar facturas">
+    <input type="search" name="q" value="<?= $e($q) ?>" placeholder="Buscar por cliente o número de factura"
+           aria-label="Buscar facturas por cliente o número" autocomplete="off">
   </form>
 </div>
 
+<div data-live="results">
 <?php if (!$invoices): ?>
   <section class="empty">
-    <h2><?= $q !== '' ? 'Sin resultados' : 'No hay facturas en este filtro' ?></h2>
-    <p class="muted"><?= $q !== '' ? 'Prueba con otro nombre o número.' : 'Crea una aquí o desde la app; aparecerá en los dos sitios.' ?></p>
+    <h2><?= $q !== '' ? $e("Ninguna factura coincide con «{$q}»") : 'No hay facturas en este filtro' ?></h2>
+    <p class="muted"><?= $q !== ''
+        ? 'Busca por el nombre del cliente o por el número (por ejemplo, 7 o F-0007). Revisa también el filtro seleccionado.'
+        : 'Crea una aquí o desde la app; aparecerá en los dos sitios.' ?></p>
   </section>
 <?php else: ?>
   <section class="panel">
@@ -64,3 +68,4 @@ $link = fn(array $over) => View::url('/facturas') . '?' . http_build_query(array
     <?php endif; ?>
   </footer>
 <?php endif; ?>
+</div>

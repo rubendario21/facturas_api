@@ -106,6 +106,18 @@ check('resumen con "Por cobrar"', $st === 200 && str_contains($html, 'Por cobrar
 $csrf = csrf($html);
 [$st, $html] = web('GET', '/admin/facturas?q=portal');
 check('búsqueda encuentra la factura', str_contains($html, 'Cliente portal'), $html);
+[$st, $html] = web('GET', '/admin/facturas?q=' . urlencode('PORTÁL cliente'));
+check('búsqueda sin tildes ni orden de palabras', str_contains($html, 'Cliente portal'), $html);
+preg_match('#>(F-0*(\d+))</a>#', $html, $num);
+$digits = $num[2] ?? '0';
+foreach ([$num[1] ?? 'F-?', $digits, 'f' . $digits, 'F-' . $digits] as $term) {
+    [$st, $html] = web('GET', '/admin/facturas?q=' . urlencode($term));
+    check("búsqueda por número «{$term}»", str_contains($html, 'Cliente portal'), $html);
+}
+[$st, $html] = web('GET', '/admin/facturas?q=' . urlencode('rc' . $digits));
+check('otro prefijo no coincide', !str_contains($html, 'Cliente portal') && str_contains($html, 'Ninguna factura coincide'), $html);
+[$st, $html] = web('GET', '/admin/facturas?q=' . urlencode('100%'));
+check('comodines de SQL se toman literal', $st === 200 && !str_contains($html, 'Cliente portal'), $html);
 [$st, $html] = web('GET', "/admin/facturas/$invoiceId");
 check('detalle muestra el pago y el saldo', str_contains($html, 'RC-') && str_contains($html, '$ 60,00'), $html);
 
