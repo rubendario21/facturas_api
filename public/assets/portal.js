@@ -102,6 +102,22 @@ document.querySelectorAll('[data-role]').forEach((sel) => {
   });
 });
 
+// Rol administrador: siempre puede anular. Si vuelve a miembro, recupera lo que tenía marcado.
+document.querySelectorAll('[data-role]').forEach((sel) => {
+  const box = sel.form.querySelector('[data-void]');
+  const help = sel.form.querySelector('[data-void-help]');
+  if (!box) return;
+  const memberHelp = 'En la app y en la web, indicando siempre el motivo. Anular una factura anula también todos sus pagos.';
+  let granted = sel.value !== 'admin' && box.checked;
+  sel.addEventListener('change', () => {
+    const admin = sel.value === 'admin';
+    if (admin) granted = box.checked;
+    box.disabled = admin;
+    box.checked = admin || granted;
+    if (help) help.textContent = admin ? 'Los administradores siempre pueden anular.' : memberHelp;
+  });
+});
+
 // Formulario de factura: filas de conceptos y totales en vivo (como en la app).
 document.querySelectorAll('[data-invoice-form]').forEach((form) => {
   const body = form.querySelector('[data-items]');

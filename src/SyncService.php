@@ -285,9 +285,9 @@ final class SyncService
     {
         $id = Validate::uuid($d['id'] ?? null);
         $reason = self::reason($d['reason'] ?? null);
-        if ($this->user['role'] !== 'admin') {
+        if (empty($this->user['can_void'])) {
             $row = Database::one('SELECT * FROM invoices WHERE id = ? AND business_id = ?', [$id, $this->businessId]);
-            return $this->rejected('Solo un administrador puede anular facturas.',
+            return $this->rejected('No tienes permiso para anular facturas. Pídeselo a un administrador.',
                 ['invoice' => $row ? self::invoiceOut($row) : null]);
         }
         return Database::transaction(function () use ($id, $reason) {
@@ -320,8 +320,8 @@ final class SyncService
         $id = Validate::uuid($d['id'] ?? null);
         $reason = self::reason($d['reason'] ?? null);
         $row = Database::one('SELECT * FROM payments WHERE id = ? AND business_id = ?', [$id, $this->businessId]);
-        if ($this->user['role'] !== 'admin') {
-            return $this->rejected('Solo un administrador puede anular pagos.', [
+        if (empty($this->user['can_void'])) {
+            return $this->rejected('No tienes permiso para anular pagos. Pídeselo a un administrador.', [
                 'payment' => $row ? self::paymentOut($row) : null,
                 'invoice' => $row ? $this->invoice($row['invoice_id']) : null,
             ]);

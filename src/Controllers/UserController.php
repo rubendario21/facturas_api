@@ -30,6 +30,7 @@ final class UserController
             (string) ($request->body['password'] ?? ''),
             $request->string('role', 'member'),
             (bool) ($request->body['web_access'] ?? false),
+            (bool) ($request->body['can_void'] ?? false),
         );
         return ['user' => Auth::publicUser($user)];
     }

@@ -85,6 +85,13 @@ $migrations = [
             }
         }
     },
+    // Permiso por persona y negocio para anular facturas y pagos. Nadie lo
+    // recibe de entrada: los administradores siempre pueden anular.
+    '004_permiso_anular' => function () use ($pdo, $columnExists): void {
+        if (!$columnExists('memberships', 'can_void')) {
+            $pdo->exec('ALTER TABLE memberships ADD COLUMN can_void TINYINT(1) NOT NULL DEFAULT 0 AFTER web_access');
+        }
+    },
 ];
 
 $applied = array_column(Database::all('SELECT id FROM schema_migrations'), 'id');

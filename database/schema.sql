@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS memberships (
   active       TINYINT(1) NOT NULL DEFAULT 1,
   -- Puede trabajar desde el portal web (los administradores siempre pueden).
   web_access   TINYINT(1) NOT NULL DEFAULT 0,
+  -- Puede anular facturas y pagos (los administradores siempre pueden).
+  can_void     TINYINT(1) NOT NULL DEFAULT 0,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, business_id),
   KEY ix_memberships_business (business_id),

@@ -184,6 +184,26 @@ check('una factura anulada no admite pagos', $r['results'][0]['status'] === 'rej
 [$s, $r] = sync($adminToken, [['type' => 'invoice_delete', 'data' => ['id' => $invV]]]);
 check('una factura anulada no se elimina (queda en el historial)', $r['results'][0]['status'] === 'rejected', $r);
 
+echo "Permiso para anular\n";
+$invP = uuid();
+$payP = uuid();
+sync($adminToken, [$invoice($invP), $payment($payP, $invP, 50)]);
+[$s, $r] = call('GET', '/auth/me', null, $anaToken);
+check('un miembro empieza sin permiso para anular', ($r['user']['can_void'] ?? null) === false, $r);
+[$s, $r] = call('PATCH', "/users/$anaId", ['can_void' => true], $adminToken);
+check('el administrador le da el permiso', $s === 200 && $r['user']['can_void'] === true, $r);
+[$s, $r] = sync($anaToken, [['type' => 'payment_void', 'data' => ['id' => $payP, 'reason' => 'Pago duplicado']]]);
+check('con permiso anula un pago', $r['results'][0]['status'] === 'ok', $r);
+check('la sincronización informa del permiso', ($r['user']['can_void'] ?? null) === true, $r);
+[$s, $r] = call('PATCH', "/users/$anaId", ['can_void' => false], $adminToken);
+[$s, $r] = sync($anaToken, [['type' => 'invoice_void', 'data' => ['id' => $invP, 'reason' => 'Ya no puede']]]);
+check('sin permiso ya no puede anular la factura', $r['results'][0]['status'] === 'rejected'
+    && str_contains($r['results'][0]['message'], 'permiso') && ($r['user']['can_void'] ?? null) === false, $r);
+[$s, $r] = call('PATCH', "/users/$anaId", ['role' => 'admin'], $adminToken);
+check('un administrador siempre tiene el permiso', ($r['user']['can_void'] ?? null) === true, $r);
+[$s, $r] = call('PATCH', "/users/$anaId", ['role' => 'member'], $adminToken);
+check('al dejar de ser administrador no lo conserva', ($r['user']['can_void'] ?? null) === false, $r);
+
 echo "Sesiones\n";
 [$s, $r] = call('POST', '/auth/refresh', ['refresh_token' => $admin['refresh_token']]);
 check('renovar sesión', $s === 200 && isset($r['access_token']), $r);

@@ -171,6 +171,28 @@ check('la factura se puede imprimir', $st === 200 && str_contains($html, 'FACTUR
 check('un miembro no puede anular pagos desde la web (403)', $st === 403);
 [$st] = $web->go('POST', "/admin/facturas/$webInvoice/anular", ['reason' => 'Prueba']);
 check('ni anular facturas (403)', $st === 403);
+[, $html] = $web->go('GET', "/admin/facturas/$webInvoice");
+check('sin permiso no se ofrece anular', !str_contains($html, 'void-form'), $html);
+$grant = function (bool $can) use ($adminA): void {
+    [, $team] = $adminA->go('GET', '/admin/equipo');
+    preg_match('#/admin/equipo/(\d+)">Web A#', $team, $u);
+    $adminA->go('GET', '/admin/equipo/' . ($u[1] ?? '0'));
+    $adminA->go('POST', '/admin/equipo/' . ($u[1] ?? '0'),
+        ['role' => 'member', 'web_access' => '1', 'active' => '1'] + ($can ? ['can_void' => '1'] : []));
+};
+[, $form] = $adminA->go('GET', '/admin/equipo/nuevo');
+check('el formulario de usuario tiene el check de anular', str_contains($form, 'name="can_void"'), $form);
+$grant(true);
+[, $team] = $adminA->go('GET', '/admin/equipo');
+check('el equipo muestra quién puede anular', str_contains($team, 'Puede anular'), $team);
+[, $html] = $web->go('GET', "/admin/facturas/$webInvoice");
+check('con permiso se ofrece anular', str_contains($html, 'void-form'), $html);
+[$st] = $web->go('POST', '/admin/pagos/' . ($pm[1] ?? '') . '/anular', ['invoice_id' => $webInvoice, 'reason' => 'Cobrado por error']);
+[, $html] = $web->go('GET', "/admin/facturas/$webInvoice");
+check('con permiso anula un pago desde la web', $st === 302 && str_contains($html, 'Cobrado por error'), [$st, $html]);
+$grant(false);
+[$st] = $web->go('POST', "/admin/facturas/$webInvoice/anular", ['reason' => 'Prueba']);
+check('al quitar el permiso vuelve a 403', $st === 403);
 [, $r] = api('POST', '/sync', ['cursor' => 0, 'changes' => []], $a['access_token']);
 $fromWeb = array_values(array_filter($r['invoices'], fn($i) => $i['number'] === 'F-0002'));
 check('la app recibe la factura creada en la web', ($fromWeb[0]['client_name'] ?? '') === 'Cliente web', $r['invoices']);

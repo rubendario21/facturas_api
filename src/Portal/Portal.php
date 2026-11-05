@@ -62,7 +62,7 @@ final class Portal
         }
 
         $uuid = '([0-9a-f-]{36})';
-        // [método, ruta, acción, requisito: 'negocio' | 'admin' | 'super' | null]
+        // [método, ruta, acción, requisito: 'negocio' | 'anular' | 'admin' | 'super' | null]
         $routes = [
             ['GET', '#^/$#', fn() => $this->redirect($this->user ? '/resumen' : '/negocios'), null],
             ['POST', '#^/salir$#', fn() => $this->logout(), null],
@@ -79,9 +79,9 @@ final class Portal
             ['POST', "#^/facturas/$uuid/editar$#", fn($id) => $this->saveInvoice($id), 'negocio'],
             ['GET', "#^/facturas/$uuid/imprimir$#", fn($id) => $this->printInvoice($id), 'negocio'],
             ['POST', "#^/facturas/$uuid/pagos$#", fn($id) => $this->addPayment($id), 'negocio'],
-            ['POST', "#^/facturas/$uuid/anular$#", fn($id) => $this->voidInvoice($id), 'admin'],
+            ['POST', "#^/facturas/$uuid/anular$#", fn($id) => $this->voidInvoice($id), 'anular'],
             ['GET', "#^/pagos/$uuid/recibo$#", fn($id) => $this->printReceipt($id), 'negocio'],
-            ['POST', "#^/pagos/$uuid/anular$#", fn($id) => $this->voidPayment($id), 'admin'],
+            ['POST', "#^/pagos/$uuid/anular$#", fn($id) => $this->voidPayment($id), 'anular'],
 
             ['GET', '#^/equipo$#', fn() => $this->team(), 'admin'],
             ['GET', '#^/equipo/nuevo$#', fn() => $this->userForm(null), 'admin'],
@@ -105,10 +105,13 @@ final class Portal
             if ($needs === 'super' && !$this->account['is_superadmin']) {
                 $this->forbidden();
             }
-            if (($needs === 'negocio' || $needs === 'admin') && $this->user === null) {
+            if (in_array($needs, ['negocio', 'anular', 'admin'], true) && $this->user === null) {
                 $this->redirect('/negocios');
             }
             if ($needs === 'admin' && !$this->isAdmin()) {
+                $this->forbidden();
+            }
+            if ($needs === 'anular' && !$this->canVoid()) {
                 $this->forbidden();
             }
             $handler(...array_slice($m, 1));
@@ -121,6 +124,11 @@ final class Portal
     private function isAdmin(): bool
     {
         return $this->user !== null && $this->user['role'] === 'admin';
+    }
+
+    private function canVoid(): bool
+    {
+        return $this->user !== null && !empty($this->user['can_void']);
     }
 
     private function forbidden(): never
@@ -183,7 +191,7 @@ final class Portal
             $b = Database::one('SELECT id, name FROM businesses WHERE id = ?', [$businessId]);
             if ($b) {
                 return $account + ['business_id' => (int) $b['id'], 'business_name' => $b['name'],
-                    'role' => 'admin', 'web_access' => true];
+                    'role' => 'admin', 'web_access' => true, 'can_void' => true];
             }
         }
         return null;
@@ -379,7 +387,7 @@ final class Portal
             'payments' => $payments,
             'creator' => $creator['name'] ?? null,
             'voider' => $voider['name'] ?? null,
-            'canVoid' => $this->isAdmin(),
+            'canVoid' => $this->canVoid(),
             'paymentError' => $_SESSION['payment_error'] ?? null,
             'paymentValues' => $_SESSION['payment_values'] ?? null,
             'methods' => ['Efectivo', 'Transferencia', 'Tarjeta', 'Otro'],
@@ -566,7 +574,7 @@ final class Portal
         $this->page('user_form', $member ? 'Editar usuario' : 'Nuevo usuario', [
             'member' => $member,
             'error' => $error,
-            'values' => $values ?? ($member ?? ['name' => '', 'username' => '', 'role' => 'member', 'active' => 1, 'web_access' => 0]),
+            'values' => $values ?? ($member ?? ['name' => '', 'username' => '', 'role' => 'member', 'active' => 1, 'web_access' => 0, 'can_void' => 0]),
             'isSelf' => $isSelf,
             // Cuentas compartidas con otros negocios: nombre y contraseña solo
             // los cambia el superadministrador (o la propia persona).
@@ -585,6 +593,7 @@ final class Portal
                 (string) ($_POST['password'] ?? ''),
                 (string) ($_POST['role'] ?? 'member'),
                 isset($_POST['web_access']),
+                isset($_POST['can_void']),
             );
             $this->flash('ok', "Usuario {$user['username']} creado. Ya puede iniciar sesión en la app"
                 . ($user['web_access'] ? ' y en la web.' : '.'));
@@ -602,6 +611,7 @@ final class Portal
             // No te puedes desactivar a ti mismo desde aquí.
             'active' => $isSelf ? true : isset($_POST['active']),
             'web_access' => isset($_POST['web_access']),
+            'can_void' => isset($_POST['can_void']),
             'password' => (string) ($_POST['password'] ?? ''),
         ];
         if (isset($_POST['name'])) {
@@ -617,7 +627,7 @@ final class Portal
                 : 'Datos del usuario guardados.');
             $this->redirect('/equipo');
         } catch (ApiException $e) {
-            $this->userForm($id, $e->getMessage(), ['id' => $id] + $_POST + ['username' => '', 'active' => 0, 'web_access' => 0]);
+            $this->userForm($id, $e->getMessage(), ['id' => $id] + $_POST + ['username' => '', 'active' => 0, 'web_access' => 0, 'can_void' => 0]);
         }
     }
 

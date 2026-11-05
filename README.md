@@ -24,6 +24,7 @@ Servidor de la app de facturas. Es PHP 8, sin dependencias (no hace falta Compos
   - **Miembro:** crea y edita facturas, y registra pagos o abonos.
   - **Administrador:** además gestiona el equipo y el emisor, y puede eliminar pagos.
 - **Acceso web:** el administrador decide qué miembros pueden usar también el portal web. Los administradores siempre pueden.
+- **Permiso para anular:** el administrador decide qué miembros pueden anular facturas y pagos, en la app y en la web. Los administradores siempre pueden.
 - **Superadministrador:** el dueño de la plataforma, que es la cuenta creada en el alta inicial. Crea negocios para sus clientes, los activa o desactiva y puede entrar en cualquiera desde la web.
 
 ## Reglas que garantiza el servidor
@@ -31,7 +32,7 @@ Servidor de la app de facturas. Es PHP 8, sin dependencias (no hace falta Compos
 - La numeración de facturas y recibos **no se repite**, aunque se creen sin conexión en varios dispositivos o desde la web. Las facturas creadas sin conexión se numeran al sincronizar.
 - Un pago **no puede superar el saldo**, aunque dos personas cobren a la vez.
 - Una factura **con pagos no se edita ni se elimina**. Queda pagada cuando los pagos cubren el total.
-- **Anulaciones** (solo administradores, con motivo obligatorio): anular una factura anula todos sus pagos; anular un pago devuelve su importe al saldo. Todo queda en el historial con el motivo, la fecha y quién anuló, y los números no se reutilizan.
+- **Anulaciones** (administradores y miembros con permiso, con motivo obligatorio): anular una factura anula todos sus pagos; anular un pago devuelve su importe al saldo. Todo queda en el historial con el motivo, la fecha y quién anuló, y los números no se reutilizan.
 - **Desactivar a una persona o un negocio**, o cambiarle la contraseña, **cierra sus sesiones al momento** en la app y en la web.
 - El administrador de un cliente **no puede cambiar el nombre ni la contraseña** de alguien que también trabaja en otros negocios, como el superadministrador. Eso solo lo hace el superadministrador.
 - Seguridad:
@@ -162,6 +163,7 @@ Migraciones incluidas:
 
 | Migración | Qué hace |
 |---|---|
+| `004_permiso_anular` | Añade el permiso de cada persona para anular facturas y pagos. Ningún miembro lo recibe de entrada; los administradores siempre pueden. |
 | `003_anulaciones` | Permite anular facturas y pagos con motivo, fecha y quién anuló. No cambia los datos existentes. |
 | `002_multi_negocio` | Pasa de un negocio a varios. Cada usuario se convierte en miembro de su negocio con el mismo rol, el primer administrador pasa a ser superadministrador y se añade el acceso web por persona. No se pierden facturas, pagos ni usuarios. |
 
@@ -173,7 +175,7 @@ Migraciones incluidas:
 |---|---|---|
 | **Resumen** | todos | Lo que falta por cobrar, lo vencido, lo cobrado en el mes, las facturas vencidas a reclamar y los últimos pagos |
 | **Facturas** | todos | Crear y editar facturas, registrar pagos o abonos e imprimir o guardar en PDF la factura y cada recibo |
-| **Equipo** | administradores | Crear usuarios, cambiar el rol, dar acceso web, desactivar y restablecer contraseñas |
+| **Equipo** | administradores | Crear usuarios, cambiar el rol, dar acceso web o permiso para anular, desactivar y restablecer contraseñas |
 | **Datos del emisor** | administradores | Nombre fiscal, identificación, logo, numeración, IVA y moneda |
 | **Negocios** | superadministrador | Crear negocios para clientes con su primer administrador, activarlos o desactivarlos y añadir cuentas existentes |
 | **Mi cuenta** | todos | Cambiar la propia contraseña |
@@ -222,7 +224,7 @@ La de concurrencia necesita un servidor que atienda peticiones en paralelo, como
 | POST | `/auth/switch` | usuario | `{business_id}` → sesión en otro de sus negocios |
 | POST | `/auth/password` | usuario | `{current_password, new_password}` |
 | GET / POST | `/users` | admin | Equipo del negocio actual (normalmente se usa el portal) |
-| PATCH | `/users/{id}` | admin | `name`, `role`, `active`, `web_access`, `password` |
+| PATCH | `/users/{id}` | admin | `name`, `role`, `active`, `web_access`, `can_void`, `password` |
 | GET / POST | `/businesses` | superadmin | Listar / crear negocios (`{name, include_me, admin?}`) |
 | PATCH | `/businesses/{id}` | superadmin | `{name?, active?}` |
 | POST | `/businesses/{id}/members` | superadmin | `{username, role}`: añade una cuenta existente |

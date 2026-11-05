@@ -16,6 +16,7 @@ final class UserService
     private const MEMBER_SELECT = '
         SELECT u.id, u.name, u.username, u.is_superadmin, u.token_version, u.created_at,
                m.role, (m.active AND u.active) AS active, (m.web_access OR m.role = \'admin\') AS web_access,
+               (m.can_void OR m.role = \'admin\') AS can_void,
                (SELECT COUNT(*) FROM memberships x WHERE x.user_id = u.id) AS business_count
         FROM memberships m JOIN users u ON u.id = m.user_id
         WHERE m.business_id = ?';
@@ -36,7 +37,7 @@ final class UserService
 
     /** Crea una cuenta nueva y la añade al negocio con el rol indicado. */
     public static function create(int $businessId, string $name, string $username, string $password, string $role,
-                                  bool $webAccess = false): array
+                                  bool $webAccess = false, bool $canVoid = false): array
     {
         $name = trim($name);
         $username = trim($username);
@@ -54,8 +55,8 @@ final class UserService
             [$name, $username, Auth::hashPassword($password), $businessId],
         );
         $id = (int) Database::pdo()->lastInsertId();
-        Database::exec('INSERT INTO memberships (user_id, business_id, role, web_access) VALUES (?, ?, ?, ?)',
-            [$id, $businessId, $role, $webAccess ? 1 : 0]);
+        Database::exec('INSERT INTO memberships (user_id, business_id, role, web_access, can_void) VALUES (?, ?, ?, ?, ?)',
+            [$id, $businessId, $role, $webAccess ? 1 : 0, $canVoid ? 1 : 0]);
         return self::find($businessId, $id);
     }
 
@@ -92,9 +93,14 @@ final class UserService
             }
         }
         $webAccess = array_key_exists('web_access', $changes) ? (bool) $changes['web_access'] : (bool) $user['web_access'];
+        // El valor leído de un administrador siempre es verdadero: no se guarda,
+        // para que no conserve el permiso si luego deja de serlo.
+        $canVoid = array_key_exists('can_void', $changes)
+            ? (bool) $changes['can_void']
+            : $user['role'] !== 'admin' && (bool) $user['can_void'];
         // Desactivar a alguien solo le quita el acceso a este negocio.
-        Database::exec('UPDATE memberships SET role = ?, active = ?, web_access = ? WHERE user_id = ? AND business_id = ?',
-            [$role, $active ? 1 : 0, $webAccess ? 1 : 0, $id, $businessId]);
+        Database::exec('UPDATE memberships SET role = ?, active = ?, web_access = ?, can_void = ? WHERE user_id = ? AND business_id = ?',
+            [$role, $active ? 1 : 0, $webAccess ? 1 : 0, $canVoid ? 1 : 0, $id, $businessId]);
         if ($active && !$user['active']) {
             Database::exec('UPDATE users SET active = 1 WHERE id = ?', [$id]);
         }

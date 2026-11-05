@@ -20,7 +20,10 @@
         </td>
         <td class="num"><?= $e($u['username']) ?></td>
         <td><?= $u['role'] === 'admin' ? 'Administrador' : 'Miembro' ?></td>
-        <td><?= $u['web_access'] ? 'App y web' : 'Solo app' ?></td>
+        <td>
+          <?= $u['web_access'] ? 'App y web' : 'Solo app' ?>
+          <?php if ($u['role'] !== 'admin' && $u['can_void']): ?><span class="sub">Puede anular</span><?php endif; ?>
+        </td>
         <td><?= $u['active'] ? '<span class="badge badge--paid">Activo</span>' : '<span class="badge">Desactivado</span>' ?></td>
         <td class="right"><a href="<?= View::url('/equipo/' . $u['id']) ?>">Editar</a></td>
       </tr>

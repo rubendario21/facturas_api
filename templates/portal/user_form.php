@@ -51,6 +51,15 @@ $isAdminRole = ($values['role'] ?? 'member') === 'admin';
           : 'Para quien usa iPhone o prefiere el navegador: podrá facturar y registrar pagos igual que en la app.' ?></small>
     </span>
   </label>
+  <label class="check">
+    <input type="checkbox" name="can_void" value="1" data-void <?= !empty($values['can_void']) || $isAdminRole ? 'checked' : '' ?> <?= $isAdminRole ? 'disabled' : '' ?>>
+    <span>
+      <strong>Puede anular facturas y pagos</strong>
+      <small data-void-help><?= $isAdminRole
+          ? 'Los administradores siempre pueden anular.'
+          : 'En la app y en la web, indicando siempre el motivo. Anular una factura anula también todos sus pagos.' ?></small>
+    </span>
+  </label>
   <?php if (!$accountLocked): ?>
     <label class="field">
       <span><?= $isNew ? 'Contraseña' : 'Restablecer contraseña' ?></span>

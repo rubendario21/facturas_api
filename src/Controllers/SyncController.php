@@ -28,6 +28,7 @@ final class SyncController
 
         $service = new SyncService($user);
         $results = $service->push($changes);
-        return ['results' => $results] + $service->pull($cursor);
+        // Con el usuario, la app se entera de los cambios de rol o de permisos.
+        return ['results' => $results, 'user' => Auth::publicUser($user)] + $service->pull($cursor);
     }
 }
