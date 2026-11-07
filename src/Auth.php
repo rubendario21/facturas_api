@@ -18,7 +18,7 @@ final class Auth
     public static function context(array $user, int $businessId): ?array
     {
         $row = Database::one(
-            'SELECT b.id, b.name, b.active AS business_active, m.role, m.active AS member_active, m.web_access, m.can_void
+            'SELECT b.id, b.name, b.active AS business_active, m.role, m.active AS member_active, m.web_access, m.can_void, m.reports
              FROM businesses b
              LEFT JOIN memberships m ON m.business_id = b.id AND m.user_id = ?
              WHERE b.id = ?',
@@ -38,6 +38,7 @@ final class Auth
             'web_access' => $row['role'] === 'admin' || (bool) $row['web_access'],
             // Y siempre pueden anular facturas y pagos.
             'can_void' => $row['role'] === 'admin' || (bool) $row['can_void'],
+            'reports' => ReportService::keysFor($row['role'], $row['reports']),
         ]);
     }
 
@@ -146,6 +147,7 @@ final class Auth
             'is_superadmin' => (bool) ($user['is_superadmin'] ?? false),
             'web_access' => (bool) ($user['web_access'] ?? false),
             'can_void' => (bool) ($user['can_void'] ?? false),
+            'reports' => $user['reports'] ?? [],
         ];
     }
 

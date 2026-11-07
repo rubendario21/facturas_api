@@ -31,6 +31,7 @@ final class UserController
             $request->string('role', 'member'),
             (bool) ($request->body['web_access'] ?? false),
             (bool) ($request->body['can_void'] ?? false),
+            $request->body['reports'] ?? [],
         );
         return ['user' => Auth::publicUser($user)];
     }
@@ -40,5 +41,13 @@ final class UserController
         $admin = Auth::requireAdmin($request);
         $user = UserService::update((int) $admin['business_id'], $admin, (int) $request->params['id'], $request->body);
         return ['user' => Auth::publicUser($user)];
+    }
+
+    /** DELETE /users/{id}: lo quita del negocio actual; su cuenta sigue existiendo. */
+    public static function remove(Request $request): array
+    {
+        $admin = Auth::requireAdmin($request);
+        UserService::removeFromBusiness((int) $admin['business_id'], $admin, (int) $request->params['id']);
+        return ['removed' => true];
     }
 }

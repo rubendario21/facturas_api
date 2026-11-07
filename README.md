@@ -25,7 +25,9 @@ Servidor de la app de facturas. Es PHP 8, sin dependencias (no hace falta Compos
   - **Administrador:** además gestiona el equipo y el emisor, y puede eliminar pagos.
 - **Acceso web:** el administrador decide qué miembros pueden usar también el portal web. Los administradores siempre pueden.
 - **Permiso para anular:** el administrador decide qué miembros pueden anular facturas y pagos, en la app y en la web. Los administradores siempre pueden.
-- **Superadministrador:** el dueño de la plataforma, que es la cuenta creada en el alta inicial. Crea negocios para sus clientes, los activa o desactiva y puede entrar en cualquiera desde la web.
+- **Informes:** el administrador elige qué informes puede ver cada miembro, en la app y en la web. Los administradores siempre ven todos.
+- **Superadministrador:** el dueño de la plataforma, que es la cuenta creada en el alta inicial. Crea negocios para sus clientes, los activa o desactiva, descarga su copia en Excel, los elimina y puede entrar en cualquiera desde la web.
+- **Eliminar un negocio** borra para siempre sus facturas, pagos, emisor y equipo, y las cuentas que solo trabajaban allí. Hay que escribir su nombre exacto para confirmar. Las cuentas que también están en otros negocios se conservan.
 
 ## Reglas que garantiza el servidor
 
@@ -34,6 +36,7 @@ Servidor de la app de facturas. Es PHP 8, sin dependencias (no hace falta Compos
 - Una factura **con pagos no se edita ni se elimina**. Queda pagada cuando los pagos cubren el total.
 - **Anulaciones** (administradores y miembros con permiso, con motivo obligatorio): anular una factura anula todos sus pagos; anular un pago devuelve su importe al saldo. Todo queda en el historial con el motivo, la fecha y quién anuló, y los números no se reutilizan.
 - **Desactivar a una persona o un negocio**, o cambiarle la contraseña, **cierra sus sesiones al momento** en la app y en la web.
+- **Quitar a una persona de un negocio** borra su pertenencia y sus permisos allí y cierra su sesión en ese negocio. Sus facturas y pagos se conservan, y su cuenta sigue existiendo. No se puede quitar al último administrador activo, nadie se quita a sí mismo (salvo el superadministrador) y el superadministrador solo lo quita él mismo.
 - El administrador de un cliente **no puede cambiar el nombre ni la contraseña** de alguien que también trabaja en otros negocios, como el superadministrador. Eso solo lo hace el superadministrador.
 - Seguridad:
   - Contraseñas con `password_hash`.
@@ -163,6 +166,7 @@ Migraciones incluidas:
 
 | Migración | Qué hace |
 |---|---|
+| `005_permiso_informes` | Añade qué informes puede ver cada persona. Ningún miembro los recibe de entrada; los administradores siempre ven todos. |
 | `004_permiso_anular` | Añade el permiso de cada persona para anular facturas y pagos. Ningún miembro lo recibe de entrada; los administradores siempre pueden. |
 | `003_anulaciones` | Permite anular facturas y pagos con motivo, fecha y quién anuló. No cambia los datos existentes. |
 | `002_multi_negocio` | Pasa de un negocio a varios. Cada usuario se convierte en miembro de su negocio con el mismo rol, el primer administrador pasa a ser superadministrador y se añade el acceso web por persona. No se pierden facturas, pagos ni usuarios. |
@@ -175,9 +179,10 @@ Migraciones incluidas:
 |---|---|---|
 | **Resumen** | todos | Lo que falta por cobrar, lo vencido, lo cobrado en el mes, las facturas vencidas a reclamar y los últimos pagos |
 | **Facturas** | todos | Crear y editar facturas, registrar pagos o abonos e imprimir o guardar en PDF la factura y cada recibo |
-| **Equipo** | administradores | Crear usuarios, cambiar el rol, dar acceso web o permiso para anular, desactivar y restablecer contraseñas |
+| **Informes** | según permiso | Facturado vs. recaudado, cartera, antigüedad, deudores, mejores clientes, evolución mensual, medios de pago, tiempo de cobro y anulaciones |
+| **Equipo** | administradores | Crear usuarios, cambiar el rol, dar acceso web, permiso para anular o informes, desactivar, quitar del negocio y restablecer contraseñas |
 | **Datos del emisor** | administradores | Nombre fiscal, identificación, logo, numeración, IVA y moneda |
-| **Negocios** | superadministrador | Crear negocios para clientes con su primer administrador, activarlos o desactivarlos y añadir cuentas existentes |
+| **Negocios** | superadministrador | Crear negocios para clientes con su primer administrador, activarlos o desactivarlos, añadir cuentas existentes, descargar su copia en Excel (resumen, facturas, detalle y pagos) y eliminarlos |
 | **Mi cuenta** | todos | Cambiar la propia contraseña |
 
 Si una persona trabaja en varios negocios, los cambia con el selector de arriba a la izquierda.
@@ -186,15 +191,61 @@ Si una persona trabaja en varios negocios, los cambia con el selector de arriba 
 
 ---
 
-## Desarrollo local (WAMP)
+## Estilos del portal
 
-1. Crea la base: `mysql -u root -P 3307 < database/schema.sql` (en WAMP, MariaDB usa el puerto 3307).
-2. Copia `config/config.example.php` a `config/config.php`. El ejemplo ya apunta a `127.0.0.1:3307`.
-3. Usa una de estas dos opciones:
-   - **Con el Apache de WAMP:** `http://localhost/facturas_api/public` (la web en `.../public/admin`).
-   - **Con el servidor de PHP:** `php -S 0.0.0.0:8080 -t public public/index.php`, en `http://IP-DEL-PC:8080`. Así también lo alcanza un móvil de la misma red Wi-Fi.
+Las preguntas de confirmación, los avisos, los mensajes de error y el menú lateral del móvil usan los componentes modal, toast, alert y offcanvas de **Bootstrap 5.3**, incluidos en `public/assets/vendor/` (no hace falta un CDN). Se compila solo esa parte porque el portal tiene clases propias con los mismos nombres; las instrucciones para regenerarla están en `deploy/bootstrap-portal.scss`.
 
-Para otra configuración, por ejemplo una base de pruebas: `FACTURAS_CONFIG=/ruta/config_pruebas.php php -S ...`
+## Probar en local antes de subir los cambios
+
+Estos pasos son para Windows con WAMP y usan **PowerShell**. Necesitas dos ventanas abiertas: una para la base de datos y otra para el servidor.
+
+**Solo la primera vez**, en `config/config.php` (si no existe, copia `config/config.example.php`) deja el puerto 3310 en el `dsn`, porque Windows reserva el 3307:
+
+```php
+'dsn' => 'mysql:host=127.0.0.1;port=3310;dbname=facturas;charset=utf8mb4',
+```
+
+### 1. Enciende la base de datos (ventana 1)
+
+```powershell
+& "C:\wamp64\bin\mariadb\mariadb11.5.2\bin\mariadbd.exe" --defaults-file="C:\wamp64\bin\mariadb\mariadb11.5.2\my.ini" --port=3310
+```
+
+La ventana se queda ocupada sin mostrar nada: es normal. Déjala abierta.
+
+Si la base `facturas` aún no existe, créala una sola vez desde la ventana 2:
+
+```powershell
+cmd /c '"C:\wamp64\bin\mariadb\mariadb11.5.2\bin\mariadb.exe" -h 127.0.0.1 -P 3310 -u root < C:\wamp64\www\facturas_api\database\schema.sql'
+```
+
+### 2. Actualiza la base y enciende el servidor (ventana 2)
+
+```powershell
+cd C:\wamp64\www\facturas_api
+& "C:\wamp64\bin\php\php8.3.14\php.exe" database/migrate.php
+& "C:\wamp64\bin\php\php8.3.14\php.exe" -S 0.0.0.0:8080 -t public public/index.php
+```
+
+La migración solo aplica lo que falte. Hazla cada vez que haya cambios en la base de datos.
+
+### 3. Prueba
+
+| Qué | Dónde |
+|---|---|
+| **Web** | `http://127.0.0.1:8080/admin` |
+| **App en Windows** | En una tercera ventana: `cd C:\wamp64\www\app_movil` y luego `C:\src\flutter\bin\flutter.bat run -d windows`. Al iniciar sesión, usa el servidor `http://127.0.0.1:8080` |
+| **App en un celular** | Con el celular en la misma red Wi-Fi, usa el servidor `http://IP-DEL-PC:8080`. La IP sale con `ipconfig`. Si no conecta, revisa que el Firewall de Windows permita el puerto 8080 |
+
+### 4. Al terminar
+
+Cierra el servidor con `Ctrl+C` en la ventana 2 y luego apaga la base de datos:
+
+```powershell
+& "C:\wamp64\bin\mariadb\mariadb11.5.2\bin\mariadb-admin.exe" -h 127.0.0.1 -P 3310 -u root shutdown
+```
+
+Para usar otra configuración, por ejemplo una base de pruebas, define la variable antes de encender el servidor: `$env:FACTURAS_CONFIG = "C:\ruta\config_pruebas.php"`.
 
 ### Pruebas automáticas
 
@@ -204,6 +255,7 @@ Para otra configuración, por ejemplo una base de pruebas: `FACTURAS_CONFIG=/rut
 php tests/api_test.php http://127.0.0.1:8080             # API: login, sincronización, pagos, roles (33 casos)
 php tests/portal_test.php http://127.0.0.1:8080          # portal: acceso, equipo, emisor, pagos (21)
 php tests/multi_business_test.php http://127.0.0.1:8080  # varios negocios, acceso web, facturar en la web (31)
+php tests/reports_test.php http://127.0.0.1:8080         # informes con cifras exactas y sus permisos
 php tests/concurrency_test.php http://localhost/facturas_api/public  # pagos simultáneos (tras api_test)
 ```
 
@@ -224,7 +276,10 @@ La de concurrencia necesita un servidor que atienda peticiones en paralelo, como
 | POST | `/auth/switch` | usuario | `{business_id}` → sesión en otro de sus negocios |
 | POST | `/auth/password` | usuario | `{current_password, new_password}` |
 | GET / POST | `/users` | admin | Equipo del negocio actual (normalmente se usa el portal) |
-| PATCH | `/users/{id}` | admin | `name`, `role`, `active`, `web_access`, `can_void`, `password` |
+| PATCH | `/users/{id}` | admin | `name`, `role`, `active`, `web_access`, `can_void`, `reports`, `password` |
+| DELETE | `/users/{id}` | admin | Lo quita del negocio actual; su cuenta sigue existiendo |
+| GET | `/reports` | usuario | Informes que puede ver |
+| GET | `/reports/{key}` | según permiso | `?from=AAAA-MM-DD&to=AAAA-MM-DD` (por defecto, el mes actual) → `summary`, `columns`, `rows` |
 | GET / POST | `/businesses` | superadmin | Listar / crear negocios (`{name, include_me, admin?}`) |
 | PATCH | `/businesses/{id}` | superadmin | `{name?, active?}` |
 | POST | `/businesses/{id}/members` | superadmin | `{username, role}`: añade una cuenta existente |

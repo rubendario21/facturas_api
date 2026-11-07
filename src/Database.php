@@ -24,6 +24,7 @@ final class Database
                     PDO::ATTR_STRINGIFY_FETCHES => false,
                 ],
             );
+            self::$pdo->exec("SET time_zone = '" . date('P') . "'");
         }
         return self::$pdo;
     }

@@ -24,12 +24,33 @@
     window.location.href = row.dataset.href;
   });
 
-  // Acciones destructivas: confirmación con el detalle de lo que se va a borrar.
-  document.querySelectorAll('form[data-confirm]').forEach((form) => {
-    form.addEventListener('submit', (ev) => {
-      if (!window.confirm(form.dataset.confirm)) ev.preventDefault();
+  // Avisos: los de éxito se cierran solos; los de error, al pulsar la X.
+  document.querySelectorAll('.toast').forEach((el) => bootstrap.Toast.getOrCreateInstance(el).show());
+
+  // Acciones destructivas: pregunta con el detalle de lo que va a pasar.
+  // El botón seguro (Cancelar) queda enfocado: Enter no confirma por accidente.
+  const modalEl = document.getElementById('confirmar');
+  if (modalEl) {
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const ok = modalEl.querySelector('[data-confirm-ok]');
+    let pending = null;
+    document.querySelectorAll('form[data-confirm]').forEach((form) => {
+      form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        pending = form;
+        modalEl.querySelector('[data-confirm-title]').textContent = form.dataset.confirmTitle || '¿Confirmas esta acción?';
+        modalEl.querySelector('[data-confirm-text]').textContent = form.dataset.confirm;
+        ok.textContent = form.dataset.confirmOk || 'Confirmar';
+        ok.disabled = false;
+        modal.show();
+      });
     });
-  });
+    modalEl.addEventListener('shown.bs.modal', () => modalEl.querySelector('[data-confirm-cancel]').focus());
+    ok.addEventListener('click', () => {
+      ok.disabled = true;
+      pending.submit();
+    });
+  }
 
   // Contraseña aleatoria legible (sin caracteres que se confunden: 0/O, 1/l).
   document.querySelectorAll('[data-generate]').forEach((btn) => {
@@ -80,9 +101,17 @@ document.querySelectorAll('[data-live-search]').forEach((form) => {
   });
 });
 
-// Selector de negocio: cambia al elegir.
-document.querySelectorAll('[data-autosubmit]').forEach((sel) => {
-  sel.addEventListener('change', () => sel.form.submit());
+// Selector de negocio: se cierra al tocar fuera o con Esc.
+document.querySelectorAll('[data-switcher]').forEach((box) => {
+  document.addEventListener('click', (ev) => {
+    if (box.open && !box.contains(ev.target)) box.open = false;
+  });
+  box.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape' || !box.open) return;
+    ev.stopPropagation();
+    box.open = false;
+    box.querySelector('summary').focus();
+  });
 });
 
 // Rol administrador: siempre tiene acceso web.
@@ -115,6 +144,25 @@ document.querySelectorAll('[data-role]').forEach((sel) => {
     box.disabled = admin;
     box.checked = admin || granted;
     if (help) help.textContent = admin ? 'Los administradores siempre pueden anular.' : memberHelp;
+  });
+});
+
+// Rol administrador: ve todos los informes. Si vuelve a miembro, recupera lo que tenía marcado.
+document.querySelectorAll('[data-role]').forEach((sel) => {
+  const boxes = Array.from(sel.form.querySelectorAll('[data-report]'));
+  const help = sel.form.querySelector('[data-reports-help]');
+  if (!boxes.length) return;
+  const memberHelp = 'En la app y en la web. Sin ninguno marcado, no verá la sección Informes.';
+  const marked = () => boxes.filter((b) => b.checked).map((b) => b.value);
+  let granted = sel.value === 'admin' ? [] : marked();
+  sel.addEventListener('change', () => {
+    const admin = sel.value === 'admin';
+    if (admin) granted = marked();
+    boxes.forEach((b) => {
+      b.disabled = admin;
+      b.checked = admin || granted.includes(b.value);
+    });
+    if (help) help.textContent = admin ? 'Los administradores siempre ven todos los informes.' : memberHelp;
   });
 });
 

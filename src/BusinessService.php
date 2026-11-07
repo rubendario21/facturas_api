@@ -73,6 +73,54 @@ final class BusinessService
         return self::find($id);
     }
 
+    /**
+     * Elimina un negocio y todo lo suyo: facturas, pagos, emisor y equipo. No se
+     * puede deshacer. Hay que confirmar escribiendo su nombre exacto.
+     *
+     * Las cuentas que solo trabajaban aquí también se borran, salvo la del
+     * superadministrador y las que aparecen como autoras en otros negocios.
+     */
+    public static function delete(int $id, string $confirmation): array
+    {
+        $business = self::find($id);
+        if (trim($confirmation) !== $business['name']) {
+            throw new ApiException(422, 'Escribe el nombre exacto del negocio para confirmar que quieres eliminarlo.');
+        }
+        return Database::transaction(function () use ($id) {
+            $members = array_column(Database::all('SELECT user_id FROM memberships WHERE business_id = ?', [$id]), 'user_id');
+            $payments = (int) Database::one('SELECT COUNT(*) AS n FROM payments WHERE business_id = ?', [$id])['n'];
+            $invoices = (int) Database::one('SELECT COUNT(*) AS n FROM invoices WHERE business_id = ?', [$id])['n'];
+            Database::exec('DELETE FROM payments WHERE business_id = ?', [$id]);
+            Database::exec('DELETE FROM invoices WHERE business_id = ?', [$id]);
+            Database::exec('DELETE FROM issuer WHERE business_id = ?', [$id]);
+            Database::exec('DELETE FROM memberships WHERE business_id = ?', [$id]);
+            Database::exec('UPDATE users SET last_business_id = NULL WHERE last_business_id = ?', [$id]);
+            $accounts = 0;
+            foreach ($members as $userId) {
+                $accounts += self::deleteOrphanAccount((int) $userId) ? 1 : 0;
+            }
+            Database::exec('DELETE FROM businesses WHERE id = ?', [$id]);
+            return ['invoices' => $invoices, 'payments' => $payments, 'accounts' => $accounts];
+        });
+    }
+
+    private static function deleteOrphanAccount(int $userId): bool
+    {
+        $inUse = Database::one(
+            'SELECT u.is_superadmin
+               OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = u.id)
+               OR EXISTS (SELECT 1 FROM invoices i WHERE i.created_by = u.id OR i.voided_by = u.id)
+               OR EXISTS (SELECT 1 FROM payments p WHERE p.created_by = u.id OR p.voided_by = u.id) AS used
+             FROM users u WHERE u.id = ?',
+            [$userId],
+        );
+        if ($inUse === null || $inUse['used']) {
+            return false;
+        }
+        Database::exec('DELETE FROM users WHERE id = ?', [$userId]);
+        return true;
+    }
+
     /** Añade (o reactiva) a un usuario existente en un negocio. */
     public static function addMember(int $businessId, int $userId, string $role): void
     {

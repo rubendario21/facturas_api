@@ -91,7 +91,7 @@ echo "Acceso\n";
 [$st, , $loc] = web('GET', '/admin');
 check('sin sesión redirige al login', $st === 302 && str_ends_with((string) $loc, '/admin/login'), [$st, $loc]);
 [$st, $html] = web('GET', '/admin/login');
-check('el login se muestra', $st === 200 && str_contains($html, 'Entra con tu usuario'));
+check('el login se muestra', $st === 200 && str_contains($html, 'Inicia sesión'));
 [$st] = web('POST', '/admin/login', ['username' => 'ruben', 'password' => 'secreto1']);
 check('sin token CSRF se rechaza (403)', $st === 403);
 $token1 = csrf($html);
@@ -120,6 +120,20 @@ check('otro prefijo no coincide', !str_contains($html, 'Cliente portal') && str_
 check('comodines de SQL se toman literal', $st === 200 && !str_contains($html, 'Cliente portal'), $html);
 [$st, $html] = web('GET', "/admin/facturas/$invoiceId");
 check('detalle muestra el pago y el saldo', str_contains($html, 'RC-') && str_contains($html, '$ 60,00'), $html);
+
+echo "Informes\n";
+[$st, $html] = web('GET', '/admin/informes');
+check('el administrador ve la lista de informes', $st === 200 && substr_count($html, 'class="report-card"') === 9, $html);
+foreach (['facturado-vs-recaudado', 'cartera', 'antiguedad', 'deudores', 'mejores-clientes', 'evolucion', 'medios-de-pago', 'tiempo-de-cobro', 'anulaciones'] as $key) {
+    [$st, $html] = web('GET', "/admin/informes/$key?desde=2026-10-01&hasta=2026-10-31");
+    check("se abre el informe $key", $st === 200 && str_contains($html, 'report-stats'), [$st, $html]);
+}
+[, $html] = web('GET', '/admin/informes/cartera');
+check('la cartera muestra al cliente y su saldo', str_contains($html, 'Cliente portal') && str_contains($html, '$ 60,00'), $html);
+[$st, $html] = web('GET', '/admin/informes/medios-de-pago?desde=mal&hasta=2026-10-31');
+check('una fecha inválida avisa sin romper la página', $st === 200 && str_contains($html, 'AAAA-MM-DD'), $html);
+[$st] = web('GET', '/admin/informes/no-existe');
+check('un informe que no existe da 404', $st === 404);
 
 echo "Equipo\n";
 $luis = 'luis' . random_int(1000, 9999);

@@ -14,4 +14,6 @@ return [
     // Duración de la sesión corta (segundos) y de la renovable (días).
     'access_ttl'       => 3600,
     'refresh_ttl_days' => 90,
+    // Zona horaria del negocio: define qué día es "hoy" en vencimientos e informes.
+    'timezone' => 'America/Bogota',
 ];

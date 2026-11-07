@@ -12,7 +12,7 @@ $plain = fn($n) => $n === '' || $n === null ? '' : rtrim(rtrim(number_format((fl
   <p class="muted"><?= $isEdit ? 'Se puede editar mientras no tenga pagos.' : 'El número se asigna al guardar, sin repetirse con los creados en la app.' ?></p>
 </header>
 
-<?php if ($error): ?><div class="flash flash--error" role="alert"><?= $e($error) ?></div><?php endif; ?>
+<?php if ($error): ?><?= View::alert($error) ?><?php endif; ?>
 
 <form method="post" action="<?= $action ?>" class="form" data-invoice-form data-currency="<?= $e($currency) ?>">
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">

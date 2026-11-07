@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\ApiException;
 use App\Controllers\AuthController;
 use App\Controllers\BusinessController;
+use App\Controllers\ReportController;
 use App\Controllers\SyncController;
 use App\Controllers\UserController;
 use App\Portal\Portal;
@@ -34,7 +35,7 @@ if ($routePath === '/admin' || str_starts_with($routePath, '/admin/')) {
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
-header('Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
     exit;
@@ -53,11 +54,14 @@ $router->add('POST', '/auth/switch', [AuthController::class, 'switchBusiness']);
 $router->add('GET', '/users', [UserController::class, 'list']);
 $router->add('POST', '/users', [UserController::class, 'create']);
 $router->add('PATCH', '/users/{id}', [UserController::class, 'update']);
+$router->add('DELETE', '/users/{id}', [UserController::class, 'remove']);
 $router->add('GET', '/businesses', [BusinessController::class, 'list']);
 $router->add('POST', '/businesses', [BusinessController::class, 'create']);
 $router->add('PATCH', '/businesses/{id}', [BusinessController::class, 'update']);
 $router->add('POST', '/businesses/{id}/members', [BusinessController::class, 'addMember']);
 $router->add('POST', '/sync', [SyncController::class, 'sync']);
+$router->add('GET', '/reports', [ReportController::class, 'list']);
+$router->add('GET', '/reports/{key}', [ReportController::class, 'show']);
 
 try {
     $response = $router->dispatch(Request::fromGlobals());

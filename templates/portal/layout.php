@@ -5,6 +5,9 @@ $nav = [];
 if ($user) {
     $nav['resumen'] = ['Resumen', '/resumen'];
     $nav['facturas'] = ['Facturas', '/facturas'];
+    if (!empty($user['reports'])) {
+        $nav['informes'] = ['Informes', '/informes'];
+    }
 }
 if ($isAdmin) {
     $nav['equipo'] = ['Equipo', '/equipo'];
@@ -30,33 +33,48 @@ $roleLabel = $user === null ? 'Plataforma' : ($user['role'] === 'admin' ? 'Admin
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="<?= View::asset('vendor/bootstrap-portal.min.css') ?>">
   <link rel="stylesheet" href="<?= View::asset('portal.css') ?>">
 </head>
 <body>
 <div class="shell">
-  <aside class="sidebar">
+  <header class="topbar">
+    <button type="button" class="topbar__menu" data-bs-toggle="offcanvas" data-bs-target="#menu" aria-controls="menu" aria-label="Abrir menú">
+      <?= View::icon('menu') ?>
+    </button>
+    <strong class="topbar__title"><?= $e($business['name'] ?? 'Facturas') ?></strong>
+  </header>
+
+  <aside class="sidebar offcanvas-start" id="menu" tabindex="-1" aria-label="Menú">
+    <button type="button" class="btn-close sidebar__close" data-bs-dismiss="offcanvas" aria-label="Cerrar menú"></button>
     <div class="brand">
       <span class="brand__mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21z"/><path class="brand__check" d="M9 11l2 2 4-4"/></svg>
       </span>
       <?php if (count($businesses) > 1): ?>
-        <form class="switcher" method="post" action="<?= View::url('/negocio-actual') ?>">
-          <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-          <label class="visually-hidden" for="negocio">Negocio</label>
-          <select id="negocio" name="business_id" data-autosubmit>
-            <?php if (!$user): ?><option value="" selected disabled>Elige un negocio</option><?php endif; ?>
-            <?php foreach ($businesses as $b): ?>
-              <option value="<?= (int) $b['id'] ?>" <?= $user && (int) $b['id'] === (int) $user['business_id'] ? 'selected' : '' ?>>
-                <?= $e($b['name']) ?><?= $b['active'] ? '' : ' (desactivado)' ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
+        <div class="switcher">
+          <details class="switcher__box" data-switcher>
+            <summary class="switcher__current" aria-label="Cambiar de negocio">
+              <span title="<?= $e($user ? $business['name'] : 'Elige un negocio') ?>"><?= $e($user ? $business['name'] : 'Elige un negocio') ?></span>
+              <?= View::icon('abajo') ?>
+            </summary>
+            <form class="switcher__menu" method="post" action="<?= View::url('/negocio-actual') ?>">
+              <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+              <?php foreach ($businesses as $b):
+                  $isCurrent = $user && (int) $b['id'] === (int) $user['business_id']; ?>
+                <button class="switcher__option<?= $isCurrent ? ' is-current' : '' ?>" type="submit" name="business_id" value="<?= (int) $b['id'] ?>"
+                        <?= $isCurrent ? 'aria-current="true"' : '' ?>>
+                  <span><?= $e($b['name']) ?><?= $b['active'] ? '' : ' (desactivado)' ?></span>
+                  <?php if ($isCurrent): ?><?= View::icon('marca') ?><?php endif; ?>
+                </button>
+              <?php endforeach; ?>
+            </form>
+          </details>
           <span class="switcher__role"><?= $e($roleLabel) ?></span>
-          <noscript><button class="btn" type="submit">Cambiar</button></noscript>
-        </form>
+        </div>
       <?php else: ?>
         <span class="brand__text">
-          <strong><?= $e($business['name'] ?? 'Facturas') ?></strong>
+          <strong title="<?= $e($business['name'] ?? 'Facturas') ?>"><?= $e($business['name'] ?? 'Facturas') ?></strong>
           <span><?= $e($roleLabel) ?></span>
         </span>
       <?php endif; ?>
@@ -87,12 +105,43 @@ $roleLabel = $user === null ? 'Plataforma' : ($user['role'] === 'admin' ? 'Admin
   </aside>
 
   <main class="main" id="contenido">
-    <?php if ($flash): ?>
-      <div class="flash flash--<?= $e($flash['type']) ?>" role="status"><?= $e($flash['text']) ?></div>
-    <?php endif; ?>
     <?= $content ?>
   </main>
 </div>
+
+<?php if ($flash):
+    $isError = $flash['type'] === 'error'; ?>
+  <div class="toast-container portal-toasts">
+    <div class="toast show toast--<?= $isError ? 'error' : 'ok' ?>" role="<?= $isError ? 'alert' : 'status' ?>" aria-atomic="true"
+         data-bs-autohide="<?= $isError ? 'false' : 'true' ?>" data-bs-delay="6000">
+      <div class="toast-body">
+        <?= View::icon($isError ? 'aviso' : 'hecho') ?>
+        <span><?= $e($flash['text']) ?></span>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
+<div class="modal fade" id="confirmar" tabindex="-1" aria-labelledby="confirmar-titulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body confirm">
+        <span class="confirm__icon"><?= View::icon('aviso') ?></span>
+        <div>
+          <h2 class="modal-title" id="confirmar-titulo" data-confirm-title></h2>
+          <p class="muted" data-confirm-text></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-bs-dismiss="modal" data-confirm-cancel>Cancelar</button>
+        <button type="button" class="btn btn--danger-solid" data-confirm-ok>Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="<?= View::asset('vendor/bootstrap.bundle.min.js') ?>"></script>
 <script src="<?= View::asset('portal.js') ?>"></script>
 </body>
 </html>

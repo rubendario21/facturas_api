@@ -5,7 +5,7 @@
   <p class="muted">Después de crearlo entrarás en él para completar los datos del emisor (nombre fiscal, logo, numeración).</p>
 </header>
 
-<?php if ($error): ?><div class="flash flash--error" role="alert"><?= $e($error) ?></div><?php endif; ?>
+<?php if ($error): ?><?= View::alert($error) ?><?php endif; ?>
 
 <form method="post" action="<?= View::url('/negocios/nuevo') ?>" class="form form--narrow">
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">

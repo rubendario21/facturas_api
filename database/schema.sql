@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS memberships (
   web_access   TINYINT(1) NOT NULL DEFAULT 0,
   -- Puede anular facturas y pagos (los administradores siempre pueden).
   can_void     TINYINT(1) NOT NULL DEFAULT 0,
+  -- Informes que puede ver, separados por comas (los administradores, todos).
+  reports      VARCHAR(500) NOT NULL DEFAULT '',
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, business_id),
   KEY ix_memberships_business (business_id),
@@ -146,4 +148,4 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   id          VARCHAR(80) PRIMARY KEY,
   applied_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
-INSERT IGNORE INTO schema_migrations (id) VALUES ('002_multi_negocio'), ('003_anulaciones');
+INSERT IGNORE INTO schema_migrations (id) VALUES ('002_multi_negocio'), ('003_anulaciones'), ('004_permiso_anular'), ('005_permiso_informes');

@@ -204,6 +204,35 @@ check('un administrador siempre tiene el permiso', ($r['user']['can_void'] ?? nu
 [$s, $r] = call('PATCH', "/users/$anaId", ['role' => 'member'], $adminToken);
 check('al dejar de ser administrador no lo conserva', ($r['user']['can_void'] ?? null) === false, $r);
 
+echo "Quitar del negocio\n";
+[, $r] = call('POST', '/users', ['name' => 'Temporal', 'username' => 'temporal', 'password' => 'secreto3', 'role' => 'member', 'can_void' => true, 'reports' => ['cartera']], $adminToken);
+$tempId = $r['user']['id'] ?? 0;
+[, $r] = call('POST', '/auth/login', ['username' => 'temporal', 'password' => 'secreto3']);
+$tempToken = $r['access_token'] ?? '';
+$invT = uuid();
+[, $r] = sync($tempToken, [$invoice($invT, ['client_name' => 'Cliente de Temporal'])]);
+check('registra una factura antes de irse', $r['results'][0]['status'] === 'ok', $r);
+[$s, $r] = call('DELETE', "/users/$tempId", null, $anaToken);
+check('un miembro no puede quitar a nadie (403)', $s === 403, $r);
+[$s, $r] = call('DELETE', '/users/999999', null, $adminToken);
+check('quitar a quien no está en el negocio: 404', $s === 404, $r);
+[$s, $r] = call('DELETE', "/users/{$admin['user']['id']}", null, $adminToken);
+check('no se puede quitar al último administrador', $s === 422 && str_contains($r['error'], 'administrador'), $r);
+[$s, $r] = call('DELETE', "/users/$tempId", null, $adminToken);
+check('el administrador lo quita', $s === 200 && $r['removed'] === true, $r);
+[$s] = call('GET', '/auth/me', null, $tempToken);
+check('su sesión deja de valer al momento', $s === 401);
+[$s] = call('POST', '/auth/login', ['username' => 'temporal', 'password' => 'secreto3']);
+check('y no puede volver a entrar sin negocio (403)', $s === 403);
+[, $r] = call('GET', '/users', null, $adminToken);
+check('ya no aparece en el equipo', !in_array('temporal', array_column($r['users'], 'username'), true), $r);
+[, $r] = sync($adminToken, []);
+$kept = array_values(array_filter($r['invoices'], fn($i) => $i['id'] === $invT));
+check('su factura se conserva', ($kept[0]['client_name'] ?? '') === 'Cliente de Temporal', $kept);
+[$s, $r] = call('POST', "/businesses/{$admin['business']['id']}/members", ['username' => 'temporal', 'role' => 'member'], $adminToken);
+[$s, $r] = call('POST', '/auth/login', ['username' => 'temporal', 'password' => 'secreto3']);
+check('si vuelve, entra sin sus permisos anteriores', $s === 200 && $r['user']['can_void'] === false && $r['user']['reports'] === [], $r);
+
 echo "Sesiones\n";
 [$s, $r] = call('POST', '/auth/refresh', ['refresh_token' => $admin['refresh_token']]);
 check('renovar sesión', $s === 200 && isset($r['access_token']), $r);

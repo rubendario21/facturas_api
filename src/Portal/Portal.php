@@ -9,6 +9,7 @@ use App\Auth;
 use App\BusinessService;
 use App\Controllers\AuthController;
 use App\Database;
+use App\ReportService;
 use App\SyncService;
 use App\UserService;
 
@@ -83,11 +84,15 @@ final class Portal
             ['GET', "#^/pagos/$uuid/recibo$#", fn($id) => $this->printReceipt($id), 'negocio'],
             ['POST', "#^/pagos/$uuid/anular$#", fn($id) => $this->voidPayment($id), 'anular'],
 
+            ['GET', '#^/informes$#', fn() => $this->reports(), 'negocio'],
+            ['GET', '#^/informes/([a-z-]+)$#', fn($key) => $this->report($key), 'negocio'],
+
             ['GET', '#^/equipo$#', fn() => $this->team(), 'admin'],
             ['GET', '#^/equipo/nuevo$#', fn() => $this->userForm(null), 'admin'],
             ['POST', '#^/equipo/nuevo$#', fn() => $this->createUser(), 'admin'],
             ['GET', '#^/equipo/(\d+)$#', fn($id) => $this->userForm((int) $id), 'admin'],
             ['POST', '#^/equipo/(\d+)$#', fn($id) => $this->updateUser((int) $id), 'admin'],
+            ['POST', '#^/equipo/(\d+)/quitar$#', fn($id) => $this->removeUser((int) $id), 'admin'],
             ['GET', '#^/emisor$#', fn() => $this->issuerForm(), 'admin'],
             ['POST', '#^/emisor$#', fn() => $this->saveIssuer(), 'admin'],
 
@@ -96,7 +101,10 @@ final class Portal
             ['POST', '#^/negocios/nuevo$#', fn() => $this->createBusiness(), 'super'],
             ['GET', '#^/negocios/(\d+)$#', fn($id) => $this->businessEdit((int) $id), 'super'],
             ['POST', '#^/negocios/(\d+)$#', fn($id) => $this->updateBusiness((int) $id), 'super'],
+            ['GET', '#^/negocios/(\d+)/copia$#', fn($id) => $this->downloadBusiness((int) $id), 'super'],
+            ['POST', '#^/negocios/(\d+)/eliminar$#', fn($id) => $this->deleteBusiness((int) $id), 'super'],
             ['POST', '#^/negocios/(\d+)/miembros$#', fn($id) => $this->addMember((int) $id), 'super'],
+            ['POST', '#^/negocios/(\d+)/miembros/(\d+)/quitar$#', fn($id, $uid) => $this->removeMember((int) $id, (int) $uid), 'super'],
         ];
         foreach ($routes as [$verb, $regex, $handler, $needs]) {
             if ($verb !== $method || !preg_match($regex, $path, $m)) {
@@ -191,7 +199,7 @@ final class Portal
             $b = Database::one('SELECT id, name FROM businesses WHERE id = ?', [$businessId]);
             if ($b) {
                 return $account + ['business_id' => (int) $b['id'], 'business_name' => $b['name'],
-                    'role' => 'admin', 'web_access' => true, 'can_void' => true];
+                    'role' => 'admin', 'web_access' => true, 'can_void' => true, 'reports' => ReportService::keys()];
             }
         }
         return null;
@@ -320,6 +328,40 @@ final class Portal
     private function issuerReady(): bool
     {
         return $this->issuer && $this->issuer['name'] !== '' && $this->issuer['tax_id'] !== '';
+    }
+
+    // -------------------------------------------------------------- informes
+
+    private function reports(): void
+    {
+        $reports = ReportService::available($this->user);
+        if ($reports === []) {
+            $this->forbidden();
+        }
+        $this->page('reports', 'Informes', ['reports' => $reports]);
+    }
+
+    private function report(string $key): void
+    {
+        try {
+            ReportService::assertAllowed($this->user, $key);
+        } catch (ApiException $e) {
+            if ($e->status === 403) {
+                $this->forbidden();
+            }
+            http_response_code(404);
+            $this->page('error', 'Informe no encontrado', ['message' => $e->getMessage()]);
+            return;
+        }
+        $error = null;
+        try {
+            [$from, $to] = ReportService::period($_GET['desde'] ?? null, $_GET['hasta'] ?? null);
+        } catch (ApiException $e) {
+            $error = $e->getMessage();
+            [$from, $to] = ReportService::period(null, null);
+        }
+        $report = ReportService::build((int) $this->user['business_id'], $key, $from, $to);
+        $this->page('report', $report['title'], ['report' => $report, 'error' => $error]);
     }
 
     // -------------------------------------------------------------- facturas
@@ -574,7 +616,7 @@ final class Portal
         $this->page('user_form', $member ? 'Editar usuario' : 'Nuevo usuario', [
             'member' => $member,
             'error' => $error,
-            'values' => $values ?? ($member ?? ['name' => '', 'username' => '', 'role' => 'member', 'active' => 1, 'web_access' => 0, 'can_void' => 0]),
+            'values' => $values ?? ($member ?? ['name' => '', 'username' => '', 'role' => 'member', 'active' => 1, 'web_access' => 0, 'can_void' => 0, 'reports' => []]),
             'isSelf' => $isSelf,
             // Cuentas compartidas con otros negocios: nombre y contraseña solo
             // los cambia el superadministrador (o la propia persona).
@@ -594,6 +636,7 @@ final class Portal
                 (string) ($_POST['role'] ?? 'member'),
                 isset($_POST['web_access']),
                 isset($_POST['can_void']),
+                self::postedReports(),
             );
             $this->flash('ok', "Usuario {$user['username']} creado. Ya puede iniciar sesión en la app"
                 . ($user['web_access'] ? ' y en la web.' : '.'));
@@ -612,6 +655,7 @@ final class Portal
             'active' => $isSelf ? true : isset($_POST['active']),
             'web_access' => isset($_POST['web_access']),
             'can_void' => isset($_POST['can_void']),
+            'reports' => self::postedReports(),
             'password' => (string) ($_POST['password'] ?? ''),
         ];
         if (isset($_POST['name'])) {
@@ -627,8 +671,27 @@ final class Portal
                 : 'Datos del usuario guardados.');
             $this->redirect('/equipo');
         } catch (ApiException $e) {
-            $this->userForm($id, $e->getMessage(), ['id' => $id] + $_POST + ['username' => '', 'active' => 0, 'web_access' => 0, 'can_void' => 0]);
+            $this->userForm($id, $e->getMessage(), ['id' => $id] + $_POST + ['username' => '', 'active' => 0, 'web_access' => 0, 'can_void' => 0, 'reports' => []]);
         }
+    }
+
+    private function removeUser(int $id): void
+    {
+        try {
+            $user = UserService::find((int) $this->user['business_id'], $id);
+            UserService::removeFromBusiness((int) $this->user['business_id'], $this->user, $id);
+        } catch (ApiException $e) {
+            $this->flash('error', $e->getMessage());
+            $this->redirect($e->status === 404 ? '/equipo' : "/equipo/$id");
+        }
+        $this->flash('ok', "{$user['name']} ya no pertenece a este negocio. Sus facturas y pagos se conservan.");
+        $this->redirect('/equipo');
+    }
+
+    /** Informes marcados en el formulario de usuario. */
+    private static function postedReports(): array
+    {
+        return is_array($_POST['reports'] ?? null) ? array_values($_POST['reports']) : [];
     }
 
     // ---------------------------------------------------------------- emisor
@@ -734,6 +797,52 @@ final class Portal
         $this->redirect("/negocios/$id");
     }
 
+    /** Copia en Excel de las facturas y pagos del negocio, para entregar al cliente. */
+    private function downloadBusiness(int $id): void
+    {
+        try {
+            [$fileName, $content] = BusinessExport::build($id);
+        } catch (ApiException) {
+            http_response_code(404);
+            $this->page('error', 'Negocio no encontrado', ['message' => 'Ese negocio no existe.']);
+            return;
+        }
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $fileName . '"');
+        header('Content-Length: ' . strlen($content));
+        header('Cache-Control: private, no-store');
+        echo $content;
+    }
+
+    private function deleteBusiness(int $id): void
+    {
+        try {
+            $name = BusinessService::find($id)['name'];
+            $done = BusinessService::delete($id, (string) ($_POST['confirm_name'] ?? ''));
+        } catch (ApiException $e) {
+            if ($e->status === 404) {
+                $this->flash('error', $e->getMessage());
+                $this->redirect('/negocios');
+            }
+            $this->businessEdit($id, $e->getMessage());
+            return;
+        }
+        $this->flash('ok', "Se eliminó {$name}: {$done['invoices']} facturas, {$done['payments']} pagos y {$done['accounts']} cuentas que solo trabajaban allí.");
+        $this->redirect('/negocios');
+    }
+
+    private function removeMember(int $id, int $userId): void
+    {
+        try {
+            $user = UserService::find($id, $userId);
+            UserService::removeFromBusiness($id, $this->account, $userId);
+            $this->flash('ok', "{$user['name']} ya no pertenece a este negocio. Sus facturas y pagos se conservan.");
+        } catch (ApiException $e) {
+            $this->flash('error', $e->getMessage());
+        }
+        $this->redirect("/negocios/$id");
+    }
+
     // ---------------------------------------------------------------- cuenta
 
     private function account(?string $error = null): void
@@ -833,7 +942,7 @@ final class Portal
         return array_map(fn($r) => self::summarize($r, null, $paid[$r['id']] ?? null), $rows);
     }
 
-    private static function summarize(array $row, ?array $payments, ?array $paidRow = null): array
+    public static function summarize(array $row, ?array $payments, ?array $paidRow = null): array
     {
         $totalCents = SyncService::totalCents($row);
         if ($payments !== null) {
@@ -880,6 +989,7 @@ final class Portal
             // Sección marcada en la navegación.
             'section' => match ($template) {
                 'invoices', 'invoice', 'invoice_form' => 'facturas',
+                'reports', 'report' => 'informes',
                 'team', 'user_form' => 'equipo',
                 'issuer' => 'emisor',
                 'account' => 'cuenta',

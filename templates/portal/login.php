@@ -1,14 +1,20 @@
 <?php use App\Portal\View; ?>
 <main class="login">
-  <div class="login__panel">
-    <span class="brand__mark brand__mark--lg" aria-hidden="true">
+  <aside class="login__cover">
+    <span class="login__brand">
+      <span class="brand__mark" aria-hidden="true">
       <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21z"/><path class="brand__check" d="M9 11l2 2 4-4"/></svg>
     </span>
-    <h1>Facturas</h1>
-    <p class="muted">Entra con tu usuario de la app para facturar y registrar pagos desde el navegador.</p>
+      Facturas
+    </span>
+    <p class="login__claim">Factura, registra pagos y revisa lo que te deben desde el navegador.</p>
+  </aside>
+  <div class="login__panel">
+    <h1>Inicia sesión</h1>
+    <p class="muted">Usa el mismo usuario y contraseña de la app.</p>
 
     <?php if ($error): ?>
-      <div class="flash flash--error" role="alert"><?= $e($error) ?></div>
+      <?= View::alert($error) ?>
     <?php endif; ?>
 
     <form method="post" action="<?= View::url('/login') ?>" class="form">

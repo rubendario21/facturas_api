@@ -4,7 +4,7 @@
   <p class="muted"><?= $e($user['name']) ?>, usuario <?= $e($user['username']) ?>. Es el mismo usuario con el que entras en la app.</p>
 </header>
 
-<?php if ($error): ?><div class="flash flash--error" role="alert"><?= $e($error) ?></div><?php endif; ?>
+<?php if ($error): ?><?= View::alert($error) ?><?php endif; ?>
 
 <form method="post" action="<?= View::url('/cuenta') ?>" class="panel panel--pad form form--narrow">
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">

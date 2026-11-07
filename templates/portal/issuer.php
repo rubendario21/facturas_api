@@ -9,7 +9,7 @@ $val = fn(string $k, string $default = '') => $e($v[$k] ?? $default);
   <p class="muted">Aparecen en todas las facturas y recibos. La app los recibe al sincronizar.</p>
 </header>
 
-<?php if ($error): ?><div class="flash flash--error" role="alert"><?= $e($error) ?></div><?php endif; ?>
+<?php if ($error): ?><?= View::alert($error) ?><?php endif; ?>
 
 <form method="post" action="<?= View::url('/emisor') ?>" enctype="multipart/form-data" class="form">
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">

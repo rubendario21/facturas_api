@@ -12,7 +12,7 @@
   </form>
 </header>
 
-<?php if ($error): ?><div class="flash flash--error" role="alert"><?= $e($error) ?></div><?php endif; ?>
+<?php if ($error): ?><?= View::alert($error) ?><?php endif; ?>
 
 <div class="columns">
   <form method="post" action="<?= View::url('/negocios/' . $b['id']) ?>" class="panel panel--pad stack">
@@ -48,19 +48,54 @@
   <?php if (!$members): ?>
     <p class="panel__empty muted">Nadie pertenece todavía a este negocio.</p>
   <?php else: ?>
-    <table class="table">
-      <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Acceso</th><th>Estado</th></tr></thead>
+    <table class="table table--cards">
+      <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Acceso</th><th>Estado</th><th></th></tr></thead>
       <tbody>
       <?php foreach ($members as $u): ?>
         <tr class="<?= $u['active'] ? '' : 'is-muted' ?>">
           <td><?= $e($u['name']) ?><?php if ($u['is_superadmin']): ?><span class="sub">Superadministrador</span><?php endif; ?></td>
-          <td class="num"><?= $e($u['username']) ?></td>
-          <td><?= $u['role'] === 'admin' ? 'Administrador' : 'Miembro' ?></td>
-          <td><?= $u['web_access'] ? 'App y web' : 'Solo app' ?></td>
-          <td><?= $u['active'] ? '<span class="badge badge--paid">Activo</span>' : '<span class="badge">Desactivado</span>' ?></td>
+          <td class="num" data-label="Usuario"><?= $e($u['username']) ?></td>
+          <td data-label="Rol"><?= $u['role'] === 'admin' ? 'Administrador' : 'Miembro' ?></td>
+          <td data-label="Acceso"><?= $u['web_access'] ? 'App y web' : 'Solo app' ?></td>
+          <td data-label="Estado"><?= $u['active'] ? '<span class="badge badge--paid">Activo</span>' : '<span class="badge">Desactivado</span>' ?></td>
+          <td class="right">
+            <form method="post" action="<?= View::url('/negocios/' . $b['id'] . '/miembros/' . $u['id'] . '/quitar') ?>"
+                  data-confirm-title="¿Quitar a <?= $e($u['name']) ?> de <?= $e($b['name']) ?>?" data-confirm-ok="Sí, quitar"
+                  data-confirm="Perderá el acceso y sus permisos en este negocio. Sus facturas y pagos se conservan.">
+              <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+              <button class="btn btn--danger" type="submit">Quitar</button>
+            </form>
+          </td>
         </tr>
       <?php endforeach; ?>
       </tbody>
     </table>
   <?php endif; ?>
 </section>
+
+<div class="columns mt">
+  <section class="panel panel--pad stack">
+    <div>
+      <h2>Copia para el cliente</h2>
+      <p class="muted small">Un archivo de Excel con el resumen, las facturas con sus valores y estados, el detalle de cada una y los pagos, incluidos los anulados con su motivo.</p>
+    </div>
+    <div class="form__actions">
+      <a class="btn" href="<?= View::url('/negocios/' . $b['id'] . '/copia') ?>">Descargar Excel</a>
+    </div>
+  </section>
+
+  <form method="post" action="<?= View::url('/negocios/' . $b['id'] . '/eliminar') ?>" class="panel panel--pad stack panel--danger"
+        data-confirm-title="¿Eliminar <?= $e($b['name']) ?> definitivamente?" data-confirm-ok="Sí, eliminar todo"
+        data-confirm="Se borrarán sus facturas, pagos, datos del emisor y equipo. No se puede deshacer.">
+    <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+    <div>
+      <h2>Eliminar negocio</h2>
+      <p class="muted small">Borra sus facturas, pagos, datos del emisor y equipo, y las cuentas que solo trabajaban aquí. No se puede deshacer: descarga antes la copia en Excel. Para pausarlo sin perder nada, desmarca «Activo».</p>
+    </div>
+    <label class="field">
+      <span>Escribe <strong><?= $e($b['name']) ?></strong> para confirmar</span>
+      <input name="confirm_name" required autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+    <div class="form__actions"><button class="btn btn--danger" type="submit">Eliminar negocio</button></div>
+  </form>
+</div>

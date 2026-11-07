@@ -92,6 +92,13 @@ $migrations = [
             $pdo->exec('ALTER TABLE memberships ADD COLUMN can_void TINYINT(1) NOT NULL DEFAULT 0 AFTER web_access');
         }
     },
+    // Informes que puede ver cada persona en cada negocio. Nadie los recibe de
+    // entrada: los administradores siempre ven todos.
+    '005_permiso_informes' => function () use ($pdo, $columnExists): void {
+        if (!$columnExists('memberships', 'reports')) {
+            $pdo->exec("ALTER TABLE memberships ADD COLUMN reports VARCHAR(500) NOT NULL DEFAULT '' AFTER can_void");
+        }
+    },
 ];
 
 $applied = array_column(Database::all('SELECT id FROM schema_migrations'), 'id');

@@ -47,15 +47,15 @@ $dateTime = fn(?string $dt) => $dt ? View::date(substr($dt, 0, 10)) . ' a las ' 
   <div class="stack">
     <section class="panel">
       <header class="panel__head"><h2>Conceptos</h2></header>
-      <table class="table">
+      <table class="table table--cards">
         <thead><tr><th>Descripción</th><th class="right">Cant.</th><th class="right">Precio</th><th class="right">Importe</th></tr></thead>
         <tbody>
         <?php $subtotal = 0; foreach ($items as $it): $line = $it['quantity'] * $it['unit_price']; $subtotal += $line; ?>
           <tr>
             <td><?= $e($it['description']) ?></td>
-            <td class="right num"><?= $e($qty($it['quantity'])) ?></td>
-            <td class="right num"><?= $e(View::money($it['unit_price'], $currency)) ?></td>
-            <td class="right num"><?= $e(View::money($line, $currency)) ?></td>
+            <td class="right num" data-label="Cantidad"><?= $e($qty($it['quantity'])) ?></td>
+            <td class="right num" data-label="Precio"><?= $e(View::money($it['unit_price'], $currency)) ?></td>
+            <td class="right num" data-label="Importe"><?= $e(View::money($line, $currency)) ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -83,23 +83,24 @@ $dateTime = fn(?string $dt) => $dt ? View::date(substr($dt, 0, 10)) . ' a las ' 
       <?php if (!$payments): ?>
         <p class="panel__empty muted">Aún no se ha registrado ningún pago.</p>
       <?php else: ?>
-        <table class="table">
+        <table class="table table--cards">
           <thead><tr><th>Recibo <span class="sub-inline">(imprimir)</span></th><th>Fecha</th><th class="hide-sm">Forma de pago</th><th class="right">Importe</th><th></th></tr></thead>
           <tbody>
           <?php foreach ($payments as $p): $pVoided = $p['voided_at'] !== null; ?>
             <tr class="<?= $pVoided ? 'is-voided-row' : '' ?>">
               <td class="num"><a class="link" href="<?= View::url('/pagos/' . $p['id'] . '/recibo') ?>" target="_blank" rel="noopener" title="Ver recibo para imprimir"><?= $e($p['receipt_number']) ?></a>
                 <?php if ($pVoided): ?><span class="badge badge--voided">Anulado</span><?php endif; ?></td>
-              <td class="num"><?= $e(View::date($p['date'])) ?></td>
+              <td class="num" data-label="Fecha"><?= $e(View::date($p['date'])) ?></td>
               <td class="hide-sm"><?= $e($p['method'] ?: '—') ?><?php if ($p['note']): ?><span class="sub"><?= $e($p['note']) ?></span><?php endif; ?>
                 <?php if ($p['created_by_name']): ?><span class="sub">Registrado por <?= $e($p['created_by_name']) ?></span><?php endif; ?></td>
-              <td class="right num <?= $pVoided ? 'strike' : 'paid-text' ?>"><?= $e(View::money((float) $p['amount'], $currency)) ?></td>
+              <td data-label="Importe" class="right num <?= $pVoided ? 'strike' : 'paid-text' ?>"><?= $e(View::money((float) $p['amount'], $currency)) ?></td>
               <td class="right nowrap">
                 <?php if ($canVoid && !$pVoided && !$voided): ?>
                   <details class="void-box">
                     <summary class="link-btn link-btn--danger">Anular</summary>
                     <form method="post" action="<?= View::url('/pagos/' . $p['id'] . '/anular') ?>" class="void-form"
-                          data-confirm="¿Anular el pago <?= $e($p['receipt_number']) ?> de <?= $e(View::money((float) $p['amount'], $currency)) ?>? El saldo de la factura aumentará en ese importe.">
+                          data-confirm-title="¿Anular el pago <?= $e($p['receipt_number']) ?>?" data-confirm-ok="Sí, anular el pago"
+                          data-confirm="Es de <?= $e(View::money((float) $p['amount'], $currency)) ?>. El saldo de la factura aumentará en ese importe. No se puede deshacer.">
                       <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
                       <input type="hidden" name="invoice_id" value="<?= $e($i['id']) ?>">
                       <label class="field"><span>Motivo de la anulación</span>
@@ -124,7 +125,7 @@ $dateTime = fn(?string $dt) => $dt ? View::date(substr($dt, 0, 10)) . ' a las ' 
         <form method="post" action="<?= View::url('/facturas/' . $i['id'] . '/pagos') ?>" class="payment-form" id="registrar-pago">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <h3>Registrar pago o abono</h3>
-          <?php if ($paymentError): ?><div class="flash flash--error" role="alert"><?= $e($paymentError) ?></div><?php endif; ?>
+          <?php if ($paymentError): ?><?= View::alert($paymentError) ?><?php endif; ?>
           <div class="payment-form__grid">
             <label class="field">
               <span>Importe</span>
@@ -176,7 +177,8 @@ $dateTime = fn(?string $dt) => $dt ? View::date(substr($dt, 0, 10)) . ' a las ' 
       <details class="panel panel--pad void-box void-box--panel">
         <summary class="btn btn--danger btn--block">Anular factura</summary>
         <form method="post" action="<?= View::url('/facturas/' . $i['id'] . '/anular') ?>" class="void-form"
-              data-confirm="¿Anular la factura <?= $e($i['number']) ?>? También se anularán todos sus pagos. No se puede deshacer.">
+              data-confirm-title="¿Anular la factura <?= $e($i['number']) ?>?" data-confirm-ok="Sí, anular la factura"
+              data-confirm="También se anularán todos sus pagos. No se puede deshacer.">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <p class="small muted">Se anulan también todos sus pagos. La factura queda en el historial con el motivo y su número no se reutiliza.</p>
           <label class="field"><span>Motivo de la anulación</span>

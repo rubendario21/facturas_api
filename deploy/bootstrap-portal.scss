@@ -1,0 +1,19 @@
+// Parte de Bootstrap que usa el portal: confirmaciones (modal), notificaciones
+// (toast), mensajes (alert) y el fondo del menú lateral en el móvil (offcanvas). No se carga entero porque el portal tiene clases
+// propias con los mismos nombres (.btn, .table, .badge...).
+//
+// Para regenerar public/assets/vendor/bootstrap-portal.min.css:
+//   npm install bootstrap@5.3.8 sass
+//   npx sass --load-path=node_modules --quiet-deps --no-source-map --style=compressed deploy/bootstrap-portal.scss public/assets/vendor/bootstrap-portal.min.css
+@import "bootstrap/scss/functions";
+@import "bootstrap/scss/variables";
+@import "bootstrap/scss/variables-dark";
+@import "bootstrap/scss/maps";
+@import "bootstrap/scss/mixins";
+@import "bootstrap/scss/root";
+@import "bootstrap/scss/transitions";
+@import "bootstrap/scss/close";
+@import "bootstrap/scss/alert";
+@import "bootstrap/scss/toasts";
+@import "bootstrap/scss/modal";
+@import "bootstrap/scss/offcanvas";

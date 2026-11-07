@@ -28,3 +28,5 @@ if (!is_file($configFile)) {
     exit;
 }
 App\Config::load(require $configFile);
+// Qué día es "hoy" (vencimientos, informes): la misma hora en PHP y en la base.
+date_default_timezone_set((string) App\Config::get('timezone', 'America/Bogota'));
